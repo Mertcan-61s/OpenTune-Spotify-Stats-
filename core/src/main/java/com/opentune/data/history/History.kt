@@ -149,6 +149,37 @@ object History {
         return out
     }
 
+    /**
+     * Imports Spotify listens into the same records used by Replay/Wrapped.
+     * Re-importing the same exports is idempotent. Distinct repeated listens
+     * at different timestamps remain distinct. The normal 10k cap applies.
+     * Spotify IDs are prefixed so they cannot be mistaken for YouTube video IDs.
+     */
+    @Synchronized
+    fun mergeSpotify(listens: List<SpotifyHistoryParser.Listen>): Int {
+        fun identity(r: PlayRecord): String =
+            "${r.playedAt}|${r.listenedMs}|${r.title.trim().lowercase()}|${r.artist.trim().lowercase()}"
+        val known = _records.value.mapTo(HashSet()) { identity(it) }
+        val added = ArrayList<PlayRecord>()
+        for (listen in listens) {
+            val record = PlayRecord(
+                videoId = "spotify:" + (listen.spotifyUri?.removePrefix("spotify:track:")
+                    ?: (listen.artist.trim().lowercase() + "/" + listen.title.trim().lowercase())),
+                title = listen.title,
+                artist = listen.artist,
+                albumName = listen.album,
+                playedAt = listen.endedAtMs,
+                listenedMs = listen.listenedMs,
+                fromAccount = true,
+            )
+            if (known.add(identity(record))) added += record
+        }
+        if (added.isNotEmpty()) {
+            _records.value = (_records.value + added).sortedByDescending { it.playedAt }.take(MAX_RECORDS)
+        }
+        return added.size
+    }
+
     fun updateListened(playedAt: Long, listenedMs: Long) {
         _records.value = _records.value.map { if (it.playedAt == playedAt) it.copy(listenedMs = listenedMs) else it }
     }
