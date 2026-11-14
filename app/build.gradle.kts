@@ -43,6 +43,12 @@ android {
     val unsignedRelease = providers.gradleProperty("unsignedRelease").map { it.toBoolean() }.getOrElse(false)
 
     buildTypes {
+        debug {
+            // Install alongside official OpenTune; never overwrite its data.
+            applicationIdSuffix = ".spotifystats"
+            versionNameSuffix = "-spotifystats"
+            resValue("string", "spotify_stats_app_name", "OpenTune Spotify Stats")
+        }
         release {
             // Shrinking only: nothing renamed or optimized (see proguard-rules.pro),
             // because stream resolution reaches NewPipe, Rhino, Ktor and others by
