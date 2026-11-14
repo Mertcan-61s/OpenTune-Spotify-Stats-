@@ -864,7 +864,10 @@ private fun settingsSections(
                         NavRow("Add another account", onSignIn, summary = "Switch between YouTube Music accounts", icon = Icons.Rounded.PersonAdd)
                     }
                 } else null,
-                Entry("Import Spotify listening history", "spotify history streaming zip json import statistics replay") {\n                    SpotifyHistoryImport()\n                },\n                Entry("Spotify account", "spotify connect sign in login account playlists library sync disconnect canvas video loop likes mixes") {
+                Entry("Import Spotify listening history", "spotify history streaming zip json import statistics replay") {
+                    SpotifyHistoryImport()
+                },
+                Entry("Spotify account", "spotify connect sign in login account playlists library sync disconnect canvas video loop likes mixes") {
                     ServiceRow(
                         ServiceKind.Spotify, "Spotify",
                         connectedAs = if (spotifyConnected) "Connected" else null,
