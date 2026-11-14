@@ -63,7 +63,9 @@ fun SpotifyHistoryImport() {
                                     if (!entry.isDirectory && entry.name.endsWith(".json", ignoreCase = true) &&
                                         (entry.name.substringAfterLast('/').startsWith("endsong_", true) ||
                                             entry.name.substringAfterLast('/').startsWith("StreamingHistory", true))) {
-                                        accept(zip.bufferedReader().readText())
+                                        val bytes = java.io.ByteArrayOutputStream()
+                                        zip.copyTo(bytes)
+                                        accept(bytes.toString(Charsets.UTF_8.name()))
                                     }
                                     zip.closeEntry()
                                 }
