@@ -120,11 +120,13 @@ object History {
 
     private fun persist(snapshot: List<PlayRecord>) {
         synchronized(saveLock) {
-            if (lastSaved === snapshot) return
+            // Persist the newest state, never a stale debounced snapshot.
+            val latest = _records.value
+            if (lastSaved === latest) return
             runCatching {
-                database?.replaceAll(snapshot)
+                database?.replaceAll(latest)
                     ?: error("History database not initialized")
-                lastSaved = snapshot
+                lastSaved = latest
                 migrationPrefs?.edit()?.putBoolean("initialized", true)?.apply()
             }.onFailure { Log.w("History", "Couldn't persist listening history", it) }
         }
