@@ -79,6 +79,7 @@ object History {
     val records: StateFlow<List<PlayRecord>> = _records.asStateFlow()
 
     private var database: HistoryDatabase? = null
+    private var migrationPrefs: android.content.SharedPreferences? = null
     private val saveLock = Any()
     @Volatile private var lastSaved: List<PlayRecord>? = null
 
@@ -87,16 +88,22 @@ object History {
         val f = File(context.filesDir, "history.json")
         file = f
         val db = HistoryDatabase(context).also { database = it }
+        val prefs = context.getSharedPreferences("history_sqlite", Context.MODE_PRIVATE)
+        migrationPrefs = prefs
         // One-time import: keep the old JSON as a recovery backup, never delete it.
         // A failed database migration must never silently erase the old archive.
         val loaded = runCatching {
-            if (db.count() > 0) db.all()
+            if (prefs.getBoolean("initialized", false) || db.count() > 0) db.all()
             else if (f.exists()) {
                 val legacy = json.decodeFromString(serializer, f.readText())
                     .sortedByDescending { it.playedAt }.take(MAX_RECORDS)
-                if (legacy.isNotEmpty()) db.replaceAll(legacy)
+                db.replaceAll(legacy)
+                prefs.edit().putBoolean("initialized", true).apply()
                 legacy
-            } else emptyList()
+            } else {
+                prefs.edit().putBoolean("initialized", true).apply()
+                emptyList()
+            }
         }.onFailure { Log.w("History", "SQLite history load failed; trying JSON backup", it) }
             .getOrElse {
                 runCatching { if (f.exists()) json.decodeFromString(serializer, f.readText()) else emptyList() }
@@ -118,6 +125,7 @@ object History {
                 database?.replaceAll(snapshot)
                     ?: error("History database not initialized")
                 lastSaved = snapshot
+                migrationPrefs?.edit()?.putBoolean("initialized", true)?.apply()
             }.onFailure { Log.w("History", "Couldn't persist listening history", it) }
         }
     }
