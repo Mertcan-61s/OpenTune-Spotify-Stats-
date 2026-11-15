@@ -249,7 +249,8 @@ jobs:
           if-no-files-found: error
 
   website:
-    runs-on: ubuntu-latest
+    # Playwright Chromium 1.58 is not supported on the ubuntu-26.04 runner.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
