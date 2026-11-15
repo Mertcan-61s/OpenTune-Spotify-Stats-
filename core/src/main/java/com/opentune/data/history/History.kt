@@ -78,85 +78,25 @@ object History {
     /** Newest first. */
     val records: StateFlow<List<PlayRecord>> = _records.asStateFlow()
 
-    private var database: HistoryDatabase? = null
-    private var migrationPrefs: android.content.SharedPreferences? = null
-    private val saveLock = Any()
-    @Volatile private var lastSaved: List<PlayRecord>? = null
+    private var saved: com.opentune.data.SavedFile? = null
 
     @OptIn(FlowPreview::class)
     fun init(context: Context) {
         val f = File(context.filesDir, "history.json")
         file = f
-        val db = HistoryDatabase(context).also { database = it }
-        val prefs = context.getSharedPreferences("history_sqlite", Context.MODE_PRIVATE)
-        migrationPrefs = prefs
-        // One-time import: keep the old JSON as a recovery backup, never delete it.
-        // A failed database migration must never silently erase the old archive.
-        val loaded = runCatching {
-            if (prefs.getBoolean("initialized", false) || db.count() > 0) db.all()
-            else if (f.exists()) {
-                val legacy = json.decodeFromString(serializer, f.readText())
-                    .sortedByDescending { it.playedAt }.take(MAX_RECORDS)
-                db.replaceAll(legacy)
-                prefs.edit().putBoolean("initialized", true).apply()
-                legacy
-            } else {
-                prefs.edit().putBoolean("initialized", true).apply()
-                emptyList()
-            }
-        }.onFailure { Log.w("History", "SQLite history load failed; trying JSON backup", it) }
-            .getOrElse {
-                runCatching { if (f.exists()) json.decodeFromString(serializer, f.readText()) else emptyList() }
-                    .getOrDefault(emptyList())
-            }
-        _records.value = loaded
-        lastSaved = loaded
+        val store = com.opentune.data.SavedFile(f, "History").also { saved = it }
+        // History that won't read is kept aside, never saved over with an empty list.
+        _records.value = store.read(emptyList()) { json.decodeFromString(serializer, it) }
         scope.launch {
-            _records.drop(1).debounce(1_500).collect { snapshot ->
-                persist(snapshot)
+            _records.drop(1).onEach { store.dirty = true }.debounce(1_500).collect { list ->
+                runCatching { store.write(json.encodeToString(serializer, list)) }
+                    .onFailure { Log.w("History", "Couldn't save history", it) }
             }
         }
     }
 
-    private fun persist(snapshot: List<PlayRecord>) {
-        synchronized(saveLock) {
-            // Persist the newest state, never a stale debounced snapshot.
-            val latest = _records.value
-            if (lastSaved === latest) return
-            runCatching {
-                val db = database ?: error("History database not initialized")
-                val previous = lastSaved
-                val isPrepend = previous != null && latest.isNotEmpty() &&
-                    latest.size == (previous.size + 1).coerceAtMost(MAX_RECORDS) &&
-                    latest.drop(1) == previous.take(MAX_RECORDS - 1)
-                if (isPrepend) {
-                    db.prepend(latest.first(), MAX_RECORDS)
-                } else if (previous != null && previous.size == latest.size) {
-                    var changed = -1
-                    var multiple = false
-                    for (i in latest.indices) {
-                        if (latest[i] != previous[i]) {
-                            if (changed >= 0) { multiple = true; break }
-                            changed = i
-                        }
-                    }
-                    if (!multiple && changed >= 0) db.updateAt(changed, latest[changed])
-                    else if (multiple) db.replaceAll(latest)
-                } else {
-                    db.replaceAll(latest)
-                }
-                lastSaved = latest
-                migrationPrefs?.edit()?.putBoolean("initialized", true)?.apply()
-            }.onFailure { Log.w("History", "Couldn't persist listening history", it) }
-        }
-    }
-
-    /** Flush pending edits without serializing the whole archive to JSON on the UI thread. */
-    fun flush() {
-        val snapshot = _records.value
-        if (lastSaved === snapshot) return
-        scope.launch { persist(snapshot) }
-    }
+    /** Saves at once a change still waiting for its save: the app is leaving the screen or closing. */
+    fun flush() { saved?.flushIfDirty { json.encodeToString(serializer, _records.value) } }
 
     /** Records a listen and returns its key for [updateListened]. */
     fun record(song: Song, listenedMs: Long): Long {
