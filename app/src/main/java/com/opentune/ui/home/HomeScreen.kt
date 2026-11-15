@@ -251,7 +251,7 @@ fun HomeScreen(
     }
     val daylist by androidx.compose.runtime.produceState(
         initialValue = com.opentune.data.history.Daylist.build(emptyList(), { null }, hidden = hidden),
-        key1 = records, key2 = artistGenres, key3 = hidden, key4 = daylistPart,
+        records, artistGenres, hidden, daylistPart,
     ) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             com.opentune.data.history.Daylist.build(records, { artistGenres[com.opentune.data.metadata.ArtistGenres.key(it)] }, hidden = hidden)
@@ -262,7 +262,7 @@ fun HomeScreen(
     val discoverMixes by com.opentune.data.reco.GenreDiscover.mixes.collectAsState()
     val discoverSeeds by androidx.compose.runtime.produceState(
         initialValue = com.opentune.data.history.GenreMixes.favourites(emptyList(), { _: String -> null }, hidden),
-        key1 = records, key2 = artistGenres, key3 = hidden, key4 = seeds,
+        records, artistGenres, hidden, seeds,
     ) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val genreOf = { a: String -> artistGenres[com.opentune.data.metadata.ArtistGenres.key(a)] }
