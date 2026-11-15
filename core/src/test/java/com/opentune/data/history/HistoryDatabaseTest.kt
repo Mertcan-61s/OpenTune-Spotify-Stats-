@@ -67,6 +67,26 @@ class HistoryDatabaseTest {
         }
     }
 
+    @Test fun durationUpdateDoesNotModifyAnImportedListenAtTheSameTime() {
+        val name = "history-test-${UUID.randomUUID()}.db"
+        val legacy = File(context.cacheDir, "history-${UUID.randomUUID()}.json")
+        try {
+            val db = HistoryDatabase(context, name)
+            db.load(legacy, 100)
+            db.add(listOf(record(10), record(10).copy(videoId = "spotify:track", fromAccount = true)), 100)
+            db.updateListened(10, 80_000)
+            db.close()
+            val reopened = HistoryDatabase(context, name)
+            val saved = reopened.load(legacy, 100)
+            assertEquals(80_000L, saved.single { !it.fromAccount }.listenedMs)
+            assertEquals(30_000L, saved.single { it.fromAccount }.listenedMs)
+            reopened.close()
+        } finally {
+            context.deleteDatabase(name)
+            legacy.delete()
+        }
+    }
+
     @Test fun largeArchiveKeepsTheLatestHundredThousand() {
         val name = "history-test-${UUID.randomUUID()}.db"
         val legacy = File(context.cacheDir, "history-${UUID.randomUUID()}.json")

@@ -89,7 +89,8 @@ internal class HistoryDatabase(context: Context, name: String = "listening_histo
             val updates = ArrayList<Pair<Long, PlayRecord>>()
             db.rawQuery("SELECT id, payload FROM listens WHERE played_at=?", arrayOf(playedAt.toString())).use { cursor ->
                 while (cursor.moveToNext()) {
-                    updates += cursor.getLong(0) to json.decodeFromString(PlayRecord.serializer(), cursor.getString(1)).copy(listenedMs = listenedMs)
+                    val record = json.decodeFromString(PlayRecord.serializer(), cursor.getString(1))
+                    if (!record.fromAccount) updates += cursor.getLong(0) to record.copy(listenedMs = listenedMs)
                 }
             }
             db.compileStatement("UPDATE listens SET payload=? WHERE id=?").use { statement ->

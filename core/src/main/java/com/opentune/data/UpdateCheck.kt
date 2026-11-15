@@ -51,7 +51,7 @@ object UpdateCheck {
     private val downloads get() = "https://github.com/$repository/releases/download"
     val RELEASES_PAGE get() = "https://github.com/$repository/releases"
     internal fun repositoryForPackage(packageName: String) =
-        if (packageName == "com.opentune.spotifystats") STATS_REPO else ORIGINAL_REPO
+        if (packageName == "com.opentune.spotifystats" || packageName == "com.opentune.spotifystats.preview") STATS_REPO else ORIGINAL_REPO
     /** How often the automatic check goes online, at most. */
     private const val AUTO_EVERY_MS = 6L * 60 * 60 * 1000
     /**

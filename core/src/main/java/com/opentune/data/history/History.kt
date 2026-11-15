@@ -42,6 +42,13 @@ data class PlayRecord(
 
 data class TopEntry(val key: String, val title: String, val subtitle: String, val thumbnailUrl: String?, val plays: Int, val listenedMs: Long, val song: Song?)
 
+/** Exact title and artist match joins the same song across Spotify and local playback. */
+internal fun PlayRecord.statisticsSongKey(): String {
+    val titleKey = title.trim().lowercase(java.util.Locale.ROOT)
+    val artistKey = artist.trim().lowercase(java.util.Locale.ROOT)
+    return if (titleKey.isEmpty() || artistKey.isEmpty()) "id:$videoId" else "name:$artistKey\u001f$titleKey"
+}
+
 data class ReplaySummary(
     val totalPlays: Int,
     val listenedMs: Long,
@@ -187,7 +194,7 @@ object History {
             if (index < 0) current else ArrayList(current).apply {
                 var i = index
                 while (i < size && this[i].playedAt == change.playedAt) {
-                    this[i] = this[i].copy(listenedMs = change.listenedMs)
+                    if (!this[i].fromAccount) this[i] = this[i].copy(listenedMs = change.listenedMs)
                     i++
                 }
             }
@@ -200,11 +207,24 @@ object History {
     }
 
     /** Records a listen and returns its key for [updateListened]. */
-    fun record(song: Song, listenedMs: Long): Long {
-        val now = System.currentTimeMillis()
+    fun record(song: Song, listenedMs: Long): Long = synchronized(lock) {
+        var now = System.currentTimeMillis()
+        // Duration updates use the timestamp as a key. Avoid sharing it with
+        // an existing listen, including one imported from Spotify.
+        fun exists(at: Long): Boolean {
+            val current = _records.value
+            var low = 0
+            var high = current.size
+            while (low < high) {
+                val middle = (low + high) ushr 1
+                if (current[middle].playedAt > at) low = middle + 1 else high = middle
+            }
+            return low < current.size && current[low].playedAt == at
+        }
+        while (exists(now)) now++
         val r = PlayRecord(song.videoId, song.title, song.artist, song.thumbnailUrl, song.durationText, song.albumName, now, listenedMs, song.isExplicit, song.artistId)
         submit(Change.Add(listOf(r)))
-        return now
+        now
     }
 
     /**
@@ -360,10 +380,10 @@ object History {
         return ReplaySummary(
             totalPlays = window.size,
             listenedMs = window.sumOf { it.listenedMs },
-            songCount = window.distinctBy { it.videoId }.size,
+            songCount = window.distinctBy { it.statisticsSongKey() }.size,
             artistCount = window.map { Wrapped.mainArtist(it.artist) }.filter { it.isNotBlank() }.distinct().size,
             albumCount = window.mapNotNull { it.albumName?.takeIf { a -> a.isNotBlank() } }.distinct().size,
-            topSongs = top({ it.videoId }, { p -> p.first().title to p.first().artist }, songOf = true),
+            topSongs = top({ it.statisticsSongKey() }, { p -> p.first().title to p.first().artist }, songOf = true),
             topArtists = top({ Wrapped.mainArtist(it.artist) }, { p -> Wrapped.mainArtist(p.first().artist) to "" }, songOf = true),
             topAlbums = top({ it.albumName }, { p -> (p.first().albumName ?: "") to p.first().artist }, songOf = false),
             byHour = clock.let { c ->

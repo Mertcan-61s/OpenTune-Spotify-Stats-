@@ -30,6 +30,7 @@ jobs:
           --tests '*HistoryDatabaseTest'
           --tests '*AccountHistoryMergeTest'
           --tests '*WrappedTest'
+          --tests '*StatisticsIdentityTest'
           --tests '*UpdateCheckTest'
       - name: Test launcher icon selection
         run: ./gradlew --no-daemon :app:testDebugUnitTest --tests '*AppIconTest'
@@ -40,5 +41,14 @@ jobs:
         with:
           name: OpenTune-Spotify-Stats-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build optimized side-by-side preview
+        run: ./gradlew --no-daemon :app:assembleRelease -PuniversalOnly=true -PstatsPreview=true
+      - name: Upload optimized preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-Spotify-Stats-optimized-preview
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14

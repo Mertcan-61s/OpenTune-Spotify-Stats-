@@ -11,6 +11,7 @@ import org.junit.Test
 class UpdateCheckTest {
     @Test fun forkChecksItsOwnReleases() {
         assertEquals("Mertcan-61s/OpenTune-Spotify-Stats-", UpdateCheck.repositoryForPackage("com.opentune.spotifystats"))
+        assertEquals("Mertcan-61s/OpenTune-Spotify-Stats-", UpdateCheck.repositoryForPackage("com.opentune.spotifystats.preview"))
         assertEquals("justshivv/Opentune", UpdateCheck.repositoryForPackage("com.opentune"))
     }
     @Test fun comparesNumberByNumber() {
