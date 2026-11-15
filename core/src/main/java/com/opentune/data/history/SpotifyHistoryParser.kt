@@ -4,12 +4,15 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.io.InputStream
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.DecodeSequenceMode
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.decodeToSequence
 
 /**
  * Offline parser for Spotify Extended Streaming History (endsong_*.json)
@@ -32,14 +35,17 @@ object SpotifyHistoryParser {
     private val json = Json { ignoreUnknownKeys = true }
     private val oldDate = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-    fun parse(contents: String, zone: ZoneId = ZoneId.systemDefault()): ParseResult {
-        val root = json.parseToJsonElement(contents)
-        require(root is JsonArray) { "Expected a Spotify history JSON array" }
-        val listens = ArrayList<Listen>(root.size)
+    fun parse(contents: String, zone: ZoneId = ZoneId.systemDefault()): ParseResult =
+        parse(contents.byteInputStream(Charsets.UTF_8), zone)
+
+    /** Decode one row at a time, without retaining the JSON tree or file text. */
+    @OptIn(ExperimentalSerializationApi::class)
+    fun parse(input: InputStream, zone: ZoneId = ZoneId.systemDefault()): ParseResult {
+        val listens = ArrayList<Listen>()
         var skipped = 0
-        for (element in root) {
+        for (element in json.decodeToSequence<JsonElement>(input, DecodeSequenceMode.ARRAY_WRAPPED)) {
             val row = element as? JsonObject
-            fun field(name: String): String? = row?.get(name)?.jsonPrimitive?.contentOrNull
+            fun field(name: String): String? = (row?.get(name) as? JsonPrimitive)?.contentOrNull
             val title = field("master_metadata_track_name") ?: field("trackName")
             val artist = field("master_metadata_album_artist_name") ?: field("artistName")
             val duration = field("ms_played")?.toLongOrNull() ?: field("msPlayed")?.toLongOrNull()

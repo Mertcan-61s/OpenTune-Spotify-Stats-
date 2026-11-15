@@ -58,6 +58,11 @@ object UpdateLock {
 
     /** The lock from what the last check remembered, before anything goes online. */
     fun init(context: Context) {
+        if (UpdateCheck.repositoryForPackage(context.packageName) != "justshivv/Opentune") {
+            _required.value = null
+            _behind.value = 0
+            return
+        }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val versions = prefs.getString(K_VERSIONS, null)?.split(',')?.filter { it.isNotBlank() }.orEmpty()
         val latest = prefs.getString(K_LATEST, null)?.split(SEP)
@@ -66,6 +71,7 @@ object UpdateLock {
 
     /** Checks the releases again, at most once an hour unless [force]d. */
     suspend fun refresh(context: Context, force: Boolean = false) = withContext(Dispatchers.IO) {
+        if (UpdateCheck.repositoryForPackage(context.packageName) != "justshivv/Opentune") return@withContext
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (!force && now - prefs.getLong(K_CHECKED, 0) < EVERY_MS) return@withContext
