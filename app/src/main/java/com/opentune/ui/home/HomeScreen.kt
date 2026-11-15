@@ -172,10 +172,7 @@ fun HomeScreen(
     val collectionPlays by com.opentune.data.history.ListenedCollections.plays.collectAsState()
     val localDial by androidx.compose.runtime.produceState(
         initialValue = emptyList<ShelfItem>(),
-        key1 = records,
-        key2 = collectionPlays,
-        key3 = hidden,
-        key4 = hideExplicit,
+        records, collectionPlays, hidden, hideExplicit,
     ) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val picks = com.opentune.data.history.SpeedDial.fromHistory(records, collections = collectionPlays)
@@ -459,10 +456,12 @@ fun HomeScreen(
                     avatarUrl = account?.thumbnailUrl, onItemClick = onItemClick, onOpenAll = onOpenSpeedDial,
                     title = runtime.title("speed-dial", "Speed dial"))
             }
-            if ("mixes" in on && daylist != null) item(key = "daylist") {
-                DaylistHero(daylist) {
-                    com.opentune.data.reco.HomeEngagement.record("daylist")
-                    actions.playAll(daylist.songs, 0, false, daylist.title)
+            if ("mixes" in on) daylist?.let { currentDaylist ->
+                item(key = "daylist") {
+                    DaylistHero(currentDaylist) {
+                        com.opentune.data.reco.HomeEngagement.record("daylist")
+                        actions.playAll(currentDaylist.songs, 0, false, currentDaylist.title)
+                    }
                 }
             }
             if ("quick-picks" in on) item(key = "quick-picks") {
