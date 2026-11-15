@@ -170,10 +170,18 @@ fun HomeScreen(
     // YouTube Music's own Speed dial when it sends one (signed in), else the songs
     // played most on this phone, with what's hidden or filtered left out.
     val collectionPlays by com.opentune.data.history.ListenedCollections.plays.collectAsState()
-    val localDial = remember(records, collectionPlays, hidden, hideExplicit) {
-        val picks = com.opentune.data.history.SpeedDial.fromHistory(records, collections = collectionPlays)
-        hidden.shelves(ContentFilter.shelves(listOf(HomeShelf(com.opentune.data.history.SpeedDial.TITLE, picks)), hideExplicit))
-            .firstOrNull()?.items.orEmpty()
+    val localDial by androidx.compose.runtime.produceState(
+        initialValue = emptyList<ShelfItem>(),
+        key1 = records,
+        key2 = collectionPlays,
+        key3 = hidden,
+        key4 = hideExplicit,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val picks = com.opentune.data.history.SpeedDial.fromHistory(records, collections = collectionPlays)
+            hidden.shelves(ContentFilter.shelves(listOf(HomeShelf(com.opentune.data.history.SpeedDial.TITLE, picks)), hideExplicit))
+                .firstOrNull()?.items.orEmpty()
+        }
     }
     val speedDial = com.opentune.data.history.SpeedDial.personalized(localDial, feed.speedDial?.items.orEmpty())
     androidx.compose.runtime.SideEffect { SpeedDialItems.items = speedDial }
