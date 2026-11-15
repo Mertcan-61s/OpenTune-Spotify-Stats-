@@ -189,8 +189,20 @@ object History {
     }
 
     /** Each track once, most recent listen first. */
-    fun recents(list: List<PlayRecord>, limit: Int = 40): List<Song> =
-        list.distinctBy { it.videoId }.take(limit).map { it.toSong() }
+    fun recents(list: List<PlayRecord>, limit: Int = 40): List<Song> {
+        if (limit <= 0) return emptyList()
+        // The home screen only needs a few unique songs, not a distinct copy
+        // of the entire Spotify archive (which may contain 100,000 listens).
+        val seen = HashSet<String>(limit * 2)
+        val result = ArrayList<Song>(limit)
+        for (record in list) {
+            if (seen.add(record.videoId)) {
+                result.add(record.toSong())
+                if (result.size == limit) break
+            }
+        }
+        return result
+    }
 
     fun replay(list: List<PlayRecord>, sinceMs: Long): ReplaySummary {
         val window = list.filter { it.playedAt >= sinceMs }
