@@ -93,7 +93,7 @@ fun SpotifyHistoryImport() {
     }
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Spotify listening history", style = MaterialTheme.typography.titleMedium)
-        Text("Import your Spotify data export from either account. Files stay on this phone. Existing OpenTune history is preserved; the latest 10,000 listens are retained.")
+        Text("Import your Spotify data export from either account. Files stay on this phone. Existing OpenTune history is preserved; the latest 100,000 listens are retained.")
         OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !busy) {
             Text(if (busy) "Reading…" else "Choose Spotify ZIP / JSON files")
         }
