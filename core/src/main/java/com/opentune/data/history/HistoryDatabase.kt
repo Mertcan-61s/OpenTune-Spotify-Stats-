@@ -3,7 +3,6 @@ package com.opentune.data.history
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
 /**
@@ -17,7 +16,6 @@ internal class HistoryDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "listening_history.db", null, 1) {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val serializer = ListSerializer(PlayRecord.serializer())
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -69,6 +67,20 @@ internal class HistoryDatabase(context: Context) :
         readableDatabase.rawQuery(
             "SELECT payload FROM listens ORDER BY position ASC LIMIT ?",
             arrayOf(limit.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result.add(json.decodeFromString(PlayRecord.serializer(), cursor.getString(0)))
+            }
+        }
+        return result
+    }
+
+    /** Restore the existing public history API from the indexed store. */
+    @Synchronized
+    fun all(): List<PlayRecord> {
+        val result = ArrayList<PlayRecord>()
+        readableDatabase.rawQuery(
+            "SELECT payload FROM listens ORDER BY position ASC", null
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 result.add(json.decodeFromString(PlayRecord.serializer(), cursor.getString(0)))
