@@ -13,6 +13,7 @@ import com.opentune.data.MusicRepository
 import com.opentune.data.subsonic.Subsonic
 import com.opentune.ui.ScreenCache
 import okio.Path.Companion.toOkioPath
+import kotlinx.coroutines.launch
 
 class OpenTuneApp : Application(), SingletonImageLoader.Factory {
     /**
@@ -57,7 +58,10 @@ class OpenTuneApp : Application(), SingletonImageLoader.Factory {
         // Last session's Home, shown at once and refreshed in the background.
         MusicRepository.init(this)?.let { ScreenCache.put("home:${com.opentune.data.settings.AppSettings.playback.value.recommender.name}", it, at = 0L) }
         // After history, library, downloads and account: they tell an existing user from a new one.
-        com.opentune.data.Welcome.settle(this)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main.immediate).launch {
+            com.opentune.data.history.History.awaitLoaded()
+            com.opentune.data.Welcome.settle(this@OpenTuneApp)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {

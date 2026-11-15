@@ -43,10 +43,15 @@ import okhttp3.Request
  * such limit, and the APK's address is built from the release's file names.
  */
 object UpdateCheck {
-    private const val LATEST = "https://api.github.com/repos/justshivv/Opentune/releases/latest"
-    private const val LATEST_PAGE = "https://github.com/justshivv/Opentune/releases/latest"
-    private const val DOWNLOADS = "https://github.com/justshivv/Opentune/releases/download"
-    const val RELEASES_PAGE = "https://github.com/justshivv/Opentune/releases"
+    private const val ORIGINAL_REPO = "justshivv/Opentune"
+    private const val STATS_REPO = "Mertcan-61s/OpenTune-Spotify-Stats-"
+    @Volatile private var repository = ORIGINAL_REPO
+    private val latest get() = "https://api.github.com/repos/$repository/releases/latest"
+    private val latestPage get() = "https://github.com/$repository/releases/latest"
+    private val downloads get() = "https://github.com/$repository/releases/download"
+    val RELEASES_PAGE get() = "https://github.com/$repository/releases"
+    internal fun repositoryForPackage(packageName: String) =
+        if (packageName == "com.opentune.spotifystats") STATS_REPO else ORIGINAL_REPO
     /** How often the automatic check goes online, at most. */
     private const val AUTO_EVERY_MS = 6L * 60 * 60 * 1000
     /**
@@ -83,7 +88,7 @@ object UpdateCheck {
         val abis = Build.SUPPORTED_ABIS.toList()
         val viaApi = runCatching {
             Http.client.newCall(
-                Request.Builder().url(LATEST).header("Accept", "application/vnd.github+json").build(),
+                Request.Builder().url(latest).header("Accept", "application/vnd.github+json").build(),
             ).execute().use { r ->
                 if (r.code == 404) return@use Result.NoReleases
                 if (!r.isSuccessful) return@use Result.Failed("GitHub answered ${r.code}")
@@ -93,10 +98,12 @@ object UpdateCheck {
             }
         }.getOrElse { Result.Failed(it.message ?: "No connection") }
         if (viaApi !is Result.Failed) return@withContext viaApi
+        // A fork does not have the original project's predictable APK names.
+        if (repository == STATS_REPO) return@withContext viaApi
         // The API said no (usually its hourly limit); the release page's redirect has none.
         Log.w(TAG, "Release API failed (${viaApi.reason}); reading the releases page")
         runCatching {
-            Http.client.newCall(Request.Builder().url(LATEST_PAGE).build()).execute().use { r ->
+            Http.client.newCall(Request.Builder().url(latestPage).build()).execute().use { r ->
                 if (!r.isSuccessful) return@use Result.Failed("GitHub answered ${r.code}")
                 val release = fromPage(r.request.url.toString(), abis) ?: return@use Result.NoReleases
                 compare(release)
@@ -116,7 +123,12 @@ object UpdateCheck {
 
     /** Reads the pending release a past check remembered, at start. */
     fun init(context: Context) {
+        repository = repositoryForPackage(context.packageName)
         val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)
+        // Never offer a cached release from the original app as a fork update.
+        if (prefs.getString("releaseRepository", null) != repository) {
+            prefs.edit { remove(K_FOUND); remove("checkedAt"); remove("skipped"); putString("releaseRepository", repository) }
+        }
         val known = found(prefs)
         if (known != null && !isNewer(known.version, BuildConfig.VERSION_NAME)) prefs.edit { remove(K_FOUND) }
         _pending.value = known?.takeIf { isNewer(it.version, BuildConfig.VERSION_NAME) }
@@ -160,8 +172,8 @@ object UpdateCheck {
             version = version,
             page = "$RELEASES_PAGE/tag/v$version",
             notes = "",
-            apk = Asset(name, "$DOWNLOADS/v$version/$name", 0),
-            sums = Asset("SHA256SUMS.txt", "$DOWNLOADS/v$version/SHA256SUMS.txt", 0),
+            apk = Asset(name, "$downloads/v$version/$name", 0),
+            sums = Asset("SHA256SUMS.txt", "$downloads/v$version/SHA256SUMS.txt", 0),
         )
     }
 

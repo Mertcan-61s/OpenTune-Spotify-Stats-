@@ -3,6 +3,7 @@ name: Spotify import Android APK
 on:
   push:
     branches: [main, master]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -22,8 +23,15 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
       - uses: gradle/actions/setup-gradle@v4
-      - name: Test Spotify JSON parser
-        run: ./gradlew --no-daemon :core:testDebugUnitTest --tests '*SpotifyHistoryParserTest'
+      - name: Test history parser, migration and large archives
+        run: >-
+          ./gradlew --no-daemon :core:testDebugUnitTest
+          --tests '*SpotifyHistoryParserTest'
+          --tests '*HistoryDatabaseTest'
+          --tests '*AccountHistoryMergeTest'
+          --tests '*WrappedTest'
+      - name: Test launcher icon selection
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests '*AppIconTest'
       - name: Build installable Android APK
         run: ./gradlew --no-daemon :app:assembleDebug -PuniversalOnly=true
       - name: Upload Android APK

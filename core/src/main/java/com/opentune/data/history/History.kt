@@ -6,15 +6,15 @@ import com.opentune.data.model.Song
 import com.opentune.data.model.durationMillis
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -64,45 +64,146 @@ data class ReplaySummary(
 )
 
 /**
- * Listening history, kept on this device only, in one JSON file. Written by
- * the playback service, read by Home's Recents, the Library and Replay.
+ * Listening history, kept on this device. The legacy JSON is retained as a
+ * recovery copy; new listens are saved individually in an indexed store.
  */
 object History {
     private const val MAX_RECORDS = 100_000
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = ListSerializer(PlayRecord.serializer())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var file: File? = null
-
     private val _records = MutableStateFlow<List<PlayRecord>>(emptyList())
     /** Newest first. */
     val records: StateFlow<List<PlayRecord>> = _records.asStateFlow()
 
-    private var saved: com.opentune.data.SavedFile? = null
+    private val lock = Any()
+    private val writes = Channel<Change>(Channel.UNLIMITED)
+    private val beforeLoad = ArrayList<Change>()
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+    private var initialized = false
+    private var ready = false
 
-    @OptIn(FlowPreview::class)
+    private sealed interface Change {
+        data class Add(val records: List<PlayRecord>) : Change
+        data class Update(val playedAt: Long, val listenedMs: Long) : Change
+        data class Replace(val records: List<PlayRecord>) : Change
+        data class Barrier(val done: CompletableDeferred<Unit>) : Change
+    }
+
+    /** JSON parsing, database migration and archive loading never block app startup. */
     fun init(context: Context) {
-        val f = File(context.filesDir, "history.json")
-        file = f
-        val store = com.opentune.data.SavedFile(f, "History").also { saved = it }
-        // History that won't read is kept aside, never saved over with an empty list.
-        _records.value = store.read(emptyList()) { json.decodeFromString(serializer, it) }
+        synchronized(lock) {
+            if (initialized) return
+            initialized = true
+        }
+        val app = context.applicationContext
         scope.launch {
-            _records.drop(1).onEach { store.dirty = true }.debounce(1_500).collect { list ->
-                runCatching { store.write(json.encodeToString(serializer, list)) }
-                    .onFailure { Log.w("History", "Couldn't save history", it) }
+            val db = HistoryDatabase(app)
+            var warned = false
+            var initial: List<PlayRecord> = emptyList()
+            while (true) {
+                try {
+                    initial = db.load(File(app.filesDir, "history.json"), MAX_RECORDS)
+                    break
+                } catch (e: Exception) {
+                    Log.w("History", "Couldn't load history; the existing files are unchanged", e)
+                    if (!warned) {
+                        com.opentune.data.Pills.error("Couldn't load listening history. Your existing history files were kept.", app)
+                        warned = true
+                    }
+                    delay(5_000)
+                }
+            }
+            synchronized(lock) {
+                var combined = initial
+                for (change in beforeLoad) combined = applyChange(combined, change)
+                _records.value = combined
+                beforeLoad.forEach { writes.trySend(it).getOrThrow() }
+                beforeLoad.clear()
+                ready = true
+                _loaded.value = true
+            }
+            // One writer preserves the order of listens, duration updates and
+            // imports. On failure the same transaction is retried before later writes.
+            for (change in writes) {
+                var saveWarned = false
+                while (true) {
+                    try {
+                        when (change) {
+                            is Change.Add -> db.add(change.records, MAX_RECORDS)
+                            is Change.Update -> db.updateListened(change.playedAt, change.listenedMs)
+                            is Change.Replace -> db.replace(change.records)
+                            is Change.Barrier -> change.done.complete(Unit)
+                        }
+                        break
+                    } catch (e: Exception) {
+                        Log.w("History", "Couldn't save history; will retry", e)
+                        if (!saveWarned) {
+                            com.opentune.data.Pills.error("Couldn't save listening history yet. Retrying.", app)
+                            saveWarned = true
+                        }
+                        delay(5_000)
+                    }
+                }
             }
         }
     }
 
-    /** Saves at once a change still waiting for its save: the app is leaving the screen or closing. */
-    fun flush() { saved?.flushIfDirty { json.encodeToString(serializer, _records.value) } }
+    suspend fun awaitLoaded() { loaded.first { it } }
+
+    /** Wait for all preceding writes to commit before reporting an import as complete. */
+    suspend fun awaitPersisted() {
+        awaitLoaded()
+        val done = CompletableDeferred<Unit>()
+        writes.send(Change.Barrier(done))
+        done.await()
+    }
+
+    /** Changes are sent to the writer immediately rather than waiting for a debounce. */
+    fun flush() = Unit
+
+    private fun applyChange(current: List<PlayRecord>, change: Change): List<PlayRecord> = when (change) {
+        is Change.Barrier -> current
+        is Change.Replace -> change.records
+        is Change.Add -> {
+            if (change.records.size == 1) {
+                val record = change.records.single()
+                var low = 0
+                var high = current.size
+                while (low < high) {
+                    val middle = (low + high) ushr 1
+                    if (current[middle].playedAt > record.playedAt) low = middle + 1 else high = middle
+                }
+                if (low >= MAX_RECORDS) current else ArrayList<PlayRecord>((current.size + 1).coerceAtMost(MAX_RECORDS)).apply {
+                    addAll(current.subList(0, low))
+                    add(record)
+                    addAll(current.subList(low, (MAX_RECORDS - 1).coerceAtMost(current.size)))
+                }
+            } else (change.records + current).sortedByDescending { it.playedAt }.take(MAX_RECORDS)
+        }
+        is Change.Update -> {
+            val index = current.indexOfFirst { it.playedAt == change.playedAt }
+            if (index < 0) current else ArrayList(current).apply {
+                var i = index
+                while (i < size && this[i].playedAt == change.playedAt) {
+                    this[i] = this[i].copy(listenedMs = change.listenedMs)
+                    i++
+                }
+            }
+        }
+    }
+
+    private fun submit(change: Change) = synchronized(lock) {
+        _records.value = applyChange(_records.value, change)
+        if (ready) writes.trySend(change).getOrThrow() else beforeLoad += change
+    }
 
     /** Records a listen and returns its key for [updateListened]. */
     fun record(song: Song, listenedMs: Long): Long {
         val now = System.currentTimeMillis()
         val r = PlayRecord(song.videoId, song.title, song.artist, song.thumbnailUrl, song.durationText, song.albumName, now, listenedMs, song.isExplicit, song.artistId)
-        _records.value = (listOf(r) + _records.value).take(MAX_RECORDS)
+        submit(Change.Add(listOf(r)))
         return now
     }
 
@@ -113,10 +214,21 @@ object History {
      * or brought in before) isn't added again. YouTube Music doesn't say when in
      * the day, so each is placed in order through its day.
      */
-    fun mergeAccount(sections: List<Pair<String, List<Song>>>, now: Long = System.currentTimeMillis()) {
-        val added = accountListens(_records.value, sections, now)
-        if (added.isEmpty()) return
-        _records.value = (_records.value + added).sortedByDescending { it.playedAt }.take(MAX_RECORDS)
+    suspend fun mergeAccount(sections: List<Pair<String, List<Song>>>, now: Long = System.currentTimeMillis()) {
+        awaitLoaded()
+        while (true) {
+            val snapshot = _records.value
+            val added = accountListens(snapshot, sections, now)
+            if (added.isEmpty()) return
+            val combined = applyChange(snapshot, Change.Add(added))
+            synchronized(lock) {
+                if (_records.value === snapshot) {
+                    _records.value = combined
+                    writes.trySend(Change.Add(added)).getOrThrow()
+                    return
+                }
+            }
+        }
     }
 
     internal fun accountListens(existing: List<PlayRecord>, sections: List<Pair<String, List<Song>>>, now: Long): List<PlayRecord> {
@@ -126,6 +238,14 @@ object History {
         clock.set(java.util.Calendar.SECOND, 0); clock.set(java.util.Calendar.MILLISECOND, 0)
         val today = clock.timeInMillis
         val out = mutableListOf<PlayRecord>()
+        // Only the latest eligible play of each song matters for the window.
+        // Avoid copying and rescanning the whole archive for every account song.
+        val latest = HashMap<String, Long>()
+        for (record in existing) {
+            if (record.playedAt <= now && record.playedAt > (latest[record.videoId] ?: Long.MIN_VALUE)) {
+                latest[record.videoId] = record.playedAt
+            }
+        }
         for ((title, songs) in sections) {
             // The window the section covers, and where in it to place its songs.
             val (from, to) = when (title.trim().lowercase()) {
@@ -136,14 +256,16 @@ object History {
             }
             val step = ((to - from) / (songs.size + 1)).coerceIn(1_000L, 10 * 60_000L)
             songs.forEachIndexed { i, song ->
-                val known = (existing + out).any { it.videoId == song.videoId && it.playedAt in from - day..now }
+                val known = (latest[song.videoId] ?: Long.MIN_VALUE) >= from - day
                 if (known) return@forEachIndexed
                 val length = song.durationText.durationMillis() ?: 180_000L
-                out += PlayRecord(
+                val record = PlayRecord(
                     song.videoId, song.title, song.artist, song.thumbnailUrl, song.durationText, song.albumName,
                     playedAt = (to - (i + 1) * step).coerceAtLeast(from), listenedMs = length,
                     explicit = song.isExplicit, artistId = song.artistId, fromAccount = true,
                 )
+                out += record
+                latest[record.videoId] = maxOf(latest[record.videoId] ?: Long.MIN_VALUE, record.playedAt)
             }
         }
         return out
@@ -155,11 +277,13 @@ object History {
      * at different timestamps remain distinct. The normal 100k cap applies.
      * Spotify IDs are prefixed so they cannot be mistaken for YouTube video IDs.
      */
-    @Synchronized
-    fun mergeSpotify(listens: List<SpotifyHistoryParser.Listen>): Int {
+    suspend fun mergeSpotify(listens: List<SpotifyHistoryParser.Listen>): Int {
+        awaitLoaded()
         fun identity(r: PlayRecord): String =
             "${r.playedAt}|${r.listenedMs}|${r.title.trim().lowercase()}|${r.artist.trim().lowercase()}"
-        val known = _records.value.mapTo(HashSet()) { identity(it) }
+        while (true) {
+        val snapshot = _records.value
+        val known = snapshot.mapTo(HashSet()) { identity(it) }
         val added = ArrayList<PlayRecord>()
         for (listen in listens) {
             val record = PlayRecord(
@@ -174,18 +298,29 @@ object History {
             )
             if (known.add(identity(record))) added += record
         }
-        if (added.isNotEmpty()) {
-            _records.value = (_records.value + added).sortedByDescending { it.playedAt }.take(MAX_RECORDS)
+        if (added.isEmpty()) return 0
+        val combined = applyChange(snapshot, Change.Add(added))
+        var accepted = false
+        synchronized(lock) {
+            if (_records.value === snapshot) {
+                _records.value = combined
+                writes.trySend(Change.Add(added)).getOrThrow()
+                accepted = true
+            }
         }
-        return added.size
+        if (accepted) {
+            awaitPersisted()
+            return added.size
+        }
+        }
     }
 
     fun updateListened(playedAt: Long, listenedMs: Long) {
-        _records.value = _records.value.map { if (it.playedAt == playedAt) it.copy(listenedMs = listenedMs) else it }
+        submit(Change.Update(playedAt, listenedMs))
     }
 
     fun clear() {
-        _records.value = emptyList()
+        submit(Change.Replace(emptyList()))
     }
 
     /** Each track once, most recent listen first. */
@@ -250,6 +385,6 @@ object History {
     fun exportJson(): JsonElement = json.encodeToJsonElement(serializer, _records.value)
 
     fun importJson(element: JsonElement) {
-        _records.value = json.decodeFromJsonElement(serializer, element).sortedByDescending { it.playedAt }.take(MAX_RECORDS)
+        submit(Change.Replace(json.decodeFromJsonElement(serializer, element).sortedByDescending { it.playedAt }.take(MAX_RECORDS))
     }
 }

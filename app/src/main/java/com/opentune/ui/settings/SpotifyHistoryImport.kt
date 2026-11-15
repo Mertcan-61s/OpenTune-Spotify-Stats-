@@ -102,9 +102,12 @@ fun SpotifyHistoryImport() {
             Button(onClick = {
                 busy = true
                 scope.launch {
-                    val count = withContext(Dispatchers.Default) { History.mergeSpotify(pending) }
-                    pending = emptyList()
-                    status = "Imported $count new listens. Skipped $skipped unsupported entries. Repeated imports do not duplicate retained listens."
+                    runCatching { withContext(Dispatchers.Default) { History.mergeSpotify(pending) } }
+                        .onSuccess { count ->
+                            pending = emptyList()
+                            status = "Imported $count new listens. Skipped $skipped unsupported entries. Repeated imports do not duplicate retained listens."
+                        }
+                        .onFailure { error -> status = "Import failed: ${error.message ?: "Unknown error"}" }
                     busy = false
                 }
             }, enabled = !busy) { Text("Import ${pending.size} listens") }

@@ -158,7 +158,19 @@ fun ReplayScreen(contentPadding: PaddingValues, actions: SongActions, onBack: ()
     val records by History.records.collectAsState()
     val account by com.opentune.data.account.AccountStore.account.collectAsState()
     var range by rememberSaveable { mutableStateOf(ReplayRange.YEAR) }
-    val summary = remember(records, range) { History.replay(records, range.since()) }
+    val summary = if (records.size <= 1_000) {
+        remember(records, range) { History.replay(records, range.since()) }
+    } else {
+        val calculated by androidx.compose.runtime.produceState(
+            initialValue = History.replay(emptyList(), range.since()),
+            records, range,
+        ) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                History.replay(records, range.since())
+            }
+        }
+        calculated
+    }
     val topSongs = remember(summary) { summary.topSongs.mapNotNull { it.song } }
     var sharing by rememberSaveable { mutableStateOf(false) }
     var story by rememberSaveable { mutableStateOf(false) }
