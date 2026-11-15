@@ -249,22 +249,32 @@ fun HomeScreen(
             daylistPart = com.opentune.data.history.Daylist.partAt(System.currentTimeMillis())
         }
     }
-    val daylist = remember(records, artistGenres, hidden, daylistPart) {
-        com.opentune.data.history.Daylist.build(records, { artistGenres[com.opentune.data.metadata.ArtistGenres.key(it)] }, hidden = hidden)
+    val daylist by androidx.compose.runtime.produceState(
+        initialValue = com.opentune.data.history.Daylist.build(emptyList(), { null }, hidden = hidden),
+        key1 = records, key2 = artistGenres, key3 = hidden, key4 = daylistPart,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.opentune.data.history.Daylist.build(records, { artistGenres[com.opentune.data.metadata.ArtistGenres.key(it)] }, hidden = hidden)
+        }
     }
     // Discover: songs not played yet from the radios of each genre's favourites, made once a day.
     // While history is short, the welcome's artists' top songs stand in as each genre's favourites.
     val discoverMixes by com.opentune.data.reco.GenreDiscover.mixes.collectAsState()
-    val discoverSeeds = remember(records, artistGenres, hidden, seeds) {
-        val genreOf = { a: String -> artistGenres[com.opentune.data.metadata.ArtistGenres.key(a)] }
-        val fromHistory = com.opentune.data.history.GenreMixes.favourites(records, genreOf, hidden)
-        if (com.opentune.data.reco.HomeSeed.isShort(records.size)) {
-            seeds.forEach { a ->
-                val g = genreOf(a.name) ?: return@forEach
-                fromHistory[g] = (fromHistory[g].orEmpty() + a.top).distinctBy { it.videoId }
+    val discoverSeeds by androidx.compose.runtime.produceState(
+        initialValue = com.opentune.data.history.GenreMixes.favourites(emptyList(), { _: String -> null }, hidden),
+        key1 = records, key2 = artistGenres, key3 = hidden, key4 = seeds,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val genreOf = { a: String -> artistGenres[com.opentune.data.metadata.ArtistGenres.key(a)] }
+            val fromHistory = com.opentune.data.history.GenreMixes.favourites(records, genreOf, hidden)
+            if (com.opentune.data.reco.HomeSeed.isShort(records.size)) {
+                seeds.forEach { a ->
+                    val g = genreOf(a.name) ?: return@forEach
+                    fromHistory[g] = (fromHistory[g].orEmpty() + a.top).distinctBy { it.videoId }
+                }
             }
+            fromHistory
         }
-        fromHistory
     }
     LaunchedEffect(discoverSeeds.keys.toList()) {
         if (discoverSeeds.isEmpty()) return@LaunchedEffect
@@ -278,7 +288,13 @@ fun HomeScreen(
     val discover = remember(discoverMixes, hidden) {
         discoverMixes.mapNotNull { m -> hidden.songs(m.songs).takeIf { it.size >= 6 }?.let { m.copy(songs = it) } }
     }
-    val badges = remember(records) { com.opentune.data.history.Streaks.badges(records) }
+    val badges by androidx.compose.runtime.produceState(
+        initialValue = com.opentune.data.history.Streaks.badges(emptyList()), key1 = records,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.opentune.data.history.Streaks.badges(records)
+        }
+    }
     val ui by AppSettings.ui.collectAsState()
     // Spotify's own mixes for the listener, when Spotify is connected (see SpotifySync).
     val spotifyConnected by com.opentune.ui.spotify.SpotifyConnection.connected.collectAsState()
