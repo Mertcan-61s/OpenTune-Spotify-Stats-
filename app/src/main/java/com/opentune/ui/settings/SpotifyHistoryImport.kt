@@ -37,8 +37,8 @@ fun SpotifyHistoryImport() {
     var status by remember { mutableStateOf("Choose Spotify's Extended Streaming History ZIP or JSON export.") }
     var pending by remember { mutableStateOf<List<SpotifyHistoryParser.Listen>>(emptyList()) }
     var skipped by remember { mutableStateOf(0) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
         busy = true
         pending = emptyList()
         status = "Reading history on this device…"
@@ -52,6 +52,7 @@ fun SpotifyHistoryImport() {
                         records.addAll(parsed.listens)
                         invalid += parsed.skipped
                     }
+                    for (uri in uris) {
                     val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
                         if (it.moveToFirst()) it.getString(0) else null
                     }.orEmpty()
@@ -62,7 +63,8 @@ fun SpotifyHistoryImport() {
                                     val entry = zip.nextEntry ?: break
                                     if (!entry.isDirectory && entry.name.endsWith(".json", ignoreCase = true) &&
                                         (entry.name.substringAfterLast('/').startsWith("endsong_", true) ||
-                                            entry.name.substringAfterLast('/').startsWith("StreamingHistory", true))) {
+                                            entry.name.substringAfterLast('/').startsWith("StreamingHistory", true) ||
+                                            entry.name.substringAfterLast('/').startsWith("Streaming_History_Audio_", true))) {
                                         val bytes = java.io.ByteArrayOutputStream()
                                         zip.copyTo(bytes)
                                         accept(bytes.toString(Charsets.UTF_8.name()))
@@ -74,7 +76,8 @@ fun SpotifyHistoryImport() {
                             require(name.endsWith(".json", ignoreCase = true)) { "Select a ZIP or JSON export" }
                             accept(input.bufferedReader().readText())
                         }
-                    } ?: error("Unable to open selected file")
+                    } ?: error("Unable to open selected file: $name")
+                    }
                     require(records.isNotEmpty()) { "No supported music listens found in this export" }
                     records to invalid
                 }
@@ -91,8 +94,8 @@ fun SpotifyHistoryImport() {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Spotify listening history", style = MaterialTheme.typography.titleMedium)
         Text("Import your Spotify data export from either account. Files stay on this phone. Existing OpenTune history is preserved; the latest 10,000 listens are retained.")
-        OutlinedButton(onClick = { picker.launch(arrayOf("application/zip", "application/json", "application/octet-stream", "*/*")) }, enabled = !busy) {
-            Text(if (busy) "Reading…" else "Choose Spotify ZIP / JSON")
+        OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !busy) {
+            Text(if (busy) "Reading…" else "Choose Spotify ZIP / JSON files")
         }
         Text(status, style = MaterialTheme.typography.bodySmall)
         if (pending.isNotEmpty()) {
