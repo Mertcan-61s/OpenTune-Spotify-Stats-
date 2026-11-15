@@ -59,6 +59,48 @@ internal class HistoryDatabase(context: Context) :
         }
     }
 
+    /** Incremental single-listen insert; avoids re-encoding the entire archive. */
+    @Synchronized
+    fun prepend(record: PlayRecord, maxRecords: Int) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val position = db.rawQuery("SELECT MIN(position) FROM listens", null).use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) - 1 else 0L
+            }
+            db.compileStatement(
+                "INSERT INTO listens(position, video_id, played_at, payload) VALUES(?, ?, ?, ?)"
+            ).use { statement ->
+                statement.bindLong(1, position)
+                statement.bindString(2, record.videoId)
+                statement.bindLong(3, record.playedAt)
+                statement.bindString(4, json.encodeToString(PlayRecord.serializer(), record))
+                statement.executeInsert()
+            }
+            db.execSQL(
+                "DELETE FROM listens WHERE position NOT IN (SELECT position FROM listens ORDER BY position ASC LIMIT ?)",
+                arrayOf(maxRecords)
+            )
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
+    /** Update only one listen's payload when playback duration changes. */
+    @Synchronized
+    fun updateAt(index: Int, record: PlayRecord) {
+        val db = writableDatabase
+        db.rawQuery("SELECT position FROM listens ORDER BY position ASC LIMIT 1 OFFSET ?",
+            arrayOf(index.toString())).use { cursor ->
+            if (!cursor.moveToFirst()) error("Missing history row $index")
+            val position = cursor.getLong(0)
+            db.compileStatement("UPDATE listens SET payload=? WHERE position=?").use { statement ->
+                statement.bindString(1, json.encodeToString(PlayRecord.serializer(), record))
+                statement.bindLong(2, position)
+                if (statement.executeUpdateDelete() != 1) error("Failed to update history row")
+            }
+        }
+    }
+
     /** Read a small window without deserializing the full Spotify archive. */
     @Synchronized
     fun recent(limit: Int): List<PlayRecord> {
