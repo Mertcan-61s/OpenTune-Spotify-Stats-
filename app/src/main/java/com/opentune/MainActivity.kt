@@ -67,8 +67,11 @@ class MainActivity : ComponentActivity() {
             val ui by AppSettings.ui.collectAsState()
             // Battery saver holds the screen at 60 Hz while OpenTune is open; otherwise as chosen.
             val saver = ui.performanceProfile == com.opentune.data.settings.PerformanceProfile.BATTERY_SAVER
+            // Request the panel's fastest supported refresh rate for smooth scrolling.
+            // The dedicated battery-saver profile still deliberately uses 60 Hz.
             LaunchedEffect(ui.highRefreshRate, ui.refreshRateHz, saver) {
-                if (saver) preferRefreshRate(true, 60) else preferRefreshRate(ui.highRefreshRate, ui.refreshRateHz)
+                if (saver) preferRefreshRate(true, 60)
+                else preferRefreshRate(true, if (ui.highRefreshRate && ui.refreshRateHz > 0) ui.refreshRateHz else 0)
             }
             val song by vm.currentSong.collectAsState()
             OpenTuneTheme(theme, artworkSeed = rememberArtworkSeed(song?.thumbnailUrl)) {
