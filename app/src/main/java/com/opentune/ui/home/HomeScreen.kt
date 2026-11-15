@@ -184,8 +184,21 @@ fun HomeScreen(
         seedsAll.filterNot { hidden.hidesArtist(it.name, it.browseId) }
             .map { it.copy(top = hidden.songs(it.top), radio = hidden.songs(it.radio)) }
     }
-    val mixes = remember(records, seeds, hidden) {
-        com.opentune.data.reco.HomeSeed.mixes(com.opentune.data.history.DailyMixes.build(records, hidden = hidden), seeds, records.size)
+    // Imported Spotify history can be very large. Building daily mixes during
+    // composition stalls the UI thread whenever Home is opened or a song ends.
+    val mixes by androidx.compose.runtime.produceState(
+        initialValue = com.opentune.data.reco.HomeSeed.mixes(
+            com.opentune.data.history.DailyMixes.build(emptyList(), hidden = hidden), seeds, 0
+        ),
+        key1 = records,
+        key2 = seeds,
+        key3 = hidden,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.opentune.data.reco.HomeSeed.mixes(
+                com.opentune.data.history.DailyMixes.build(records, hidden = hidden), seeds, records.size
+            )
+        }
     }
     // One mix for each genre played most, from the artists' genres as they're learnt; the most
     // played artists are looked up first, a few at a time, and kept.
@@ -210,8 +223,11 @@ fun HomeScreen(
     // The artists picked at the welcome count too, so a new install has genres from the start.
     val followed by com.opentune.data.releases.NewReleases.followed.collectAsState()
     LaunchedEffect(records.size / 25, hidden, followed.size) {
-        val top = hidden.records(records).groupBy { com.opentune.data.history.Wrapped.mainArtist(it.artist) }
-            .filterKeys { it.isNotBlank() }.toList().sortedByDescending { it.second.size }.take(GENRE_ARTISTS).map { it.first }
+        val top = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            hidden.records(records).groupingBy { com.opentune.data.history.Wrapped.mainArtist(it.artist) }
+                .eachCount().filterKeys { it.isNotBlank() }
+                .entries.sortedByDescending { it.value }.take(GENRE_ARTISTS).map { it.key }
+        }
         val picked = followed.sortedByDescending { it.followedAt }.map { it.name }.filterNot { hidden.hidesArtist(it) }
         val ask = (top + picked).distinct()
         if (ask.isNotEmpty()) com.opentune.data.metadata.ArtistGenres.learn(ask)
