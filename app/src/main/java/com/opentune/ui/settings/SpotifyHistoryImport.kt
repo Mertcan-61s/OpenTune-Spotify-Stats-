@@ -47,8 +47,8 @@ fun SpotifyHistoryImport() {
                 withContext(Dispatchers.IO) {
                     val records = ArrayList<SpotifyHistoryParser.Listen>()
                     var invalid = 0
-                    fun accept(content: String) {
-                        val parsed = SpotifyHistoryParser.parse(content)
+                    fun accept(input: java.io.InputStream) {
+                        val parsed = SpotifyHistoryParser.parse(input)
                         records.addAll(parsed.listens)
                         invalid += parsed.skipped
                     }
@@ -65,16 +65,15 @@ fun SpotifyHistoryImport() {
                                         (entry.name.substringAfterLast('/').startsWith("endsong_", true) ||
                                             entry.name.substringAfterLast('/').startsWith("StreamingHistory", true) ||
                                             entry.name.substringAfterLast('/').startsWith("Streaming_History_Audio_", true))) {
-                                        val bytes = java.io.ByteArrayOutputStream()
-                                        zip.copyTo(bytes)
-                                        accept(bytes.toString(Charsets.UTF_8.name()))
+                                        // The parser must not close the ZIP between entries.
+                                        accept(object : java.io.FilterInputStream(zip) { override fun close() = Unit })
                                     }
                                     zip.closeEntry()
                                 }
                             }
                         } else {
                             require(name.endsWith(".json", ignoreCase = true)) { "Select a ZIP or JSON export" }
-                            accept(input.bufferedReader().readText())
+                            accept(input)
                         }
                     } ?: error("Unable to open selected file: $name")
                     }

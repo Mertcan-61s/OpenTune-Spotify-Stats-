@@ -105,14 +105,22 @@ object Wrapped {
             .maxWithOrNull(compareBy<List<PlayRecord>> { it.size }.thenBy { -it.first().playedAt })
             ?.takeIf { it.size >= 2 }
 
-        val months = (11 downTo 0).map { back ->
+        val monthKeys = (11 downTo 0).map { back ->
             cal.timeInMillis = nowMs
             cal.add(Calendar.MONTH, -back)
             val year = cal.get(Calendar.YEAR)
             val month = cal.get(Calendar.MONTH)
             val name = cal.getDisplayName(Calendar.MONTH, Calendar.SHORT, java.util.Locale.getDefault()).orEmpty()
-            name to minutes(records.filter { r -> cal.timeInMillis = r.playedAt; cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month })
+            (year * 12 + month) to name
         }
+        val monthIndex = monthKeys.mapIndexed { index, (key, _) -> key to index }.toMap()
+        val monthTotals = LongArray(monthKeys.size)
+        for (record in records) {
+            cal.timeInMillis = record.playedAt
+            val key = cal.get(Calendar.YEAR) * 12 + cal.get(Calendar.MONTH)
+            monthIndex[key]?.let { monthTotals[it] += listenedMs(record) }
+        }
+        val months = monthKeys.mapIndexed { i, (_, name) -> name to TimeUnit.MILLISECONDS.toMinutes(monthTotals[i]) }
 
         return Summary(
             sinceMs = sinceMs,

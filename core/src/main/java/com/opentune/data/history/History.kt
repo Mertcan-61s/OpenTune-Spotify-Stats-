@@ -385,6 +385,6 @@ object History {
     fun exportJson(): JsonElement = json.encodeToJsonElement(serializer, _records.value)
 
     fun importJson(element: JsonElement) {
-        submit(Change.Replace(json.decodeFromJsonElement(serializer, element).sortedByDescending { it.playedAt }.take(MAX_RECORDS))
+        submit(Change.Replace(json.decodeFromJsonElement(serializer, element).sortedByDescending { it.playedAt }.take(MAX_RECORDS)))
     }
 }

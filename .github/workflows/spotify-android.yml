@@ -30,6 +30,7 @@ jobs:
           --tests '*HistoryDatabaseTest'
           --tests '*AccountHistoryMergeTest'
           --tests '*WrappedTest'
+          --tests '*UpdateCheckTest'
       - name: Test launcher icon selection
         run: ./gradlew --no-daemon :app:testDebugUnitTest --tests '*AppIconTest'
       - name: Build installable Android APK
