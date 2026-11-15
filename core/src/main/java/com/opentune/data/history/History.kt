@@ -68,7 +68,7 @@ data class ReplaySummary(
  * the playback service, read by Home's Recents, the Library and Replay.
  */
 object History {
-    private const val MAX_RECORDS = 10_000
+    private const val MAX_RECORDS = 100_000
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = ListSerializer(PlayRecord.serializer())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -152,7 +152,7 @@ object History {
     /**
      * Imports Spotify listens into the same records used by Replay/Wrapped.
      * Re-importing the same exports is idempotent. Distinct repeated listens
-     * at different timestamps remain distinct. The normal 10k cap applies.
+     * at different timestamps remain distinct. The normal 100k cap applies.
      * Spotify IDs are prefixed so they cannot be mistaken for YouTube video IDs.
      */
     @Synchronized
