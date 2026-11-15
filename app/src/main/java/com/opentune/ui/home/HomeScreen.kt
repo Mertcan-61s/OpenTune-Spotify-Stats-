@@ -278,8 +278,13 @@ fun HomeScreen(
     }
     LaunchedEffect(discoverSeeds.keys.toList()) {
         if (discoverSeeds.isEmpty()) return@LaunchedEffect
-        val played = records.mapTo(HashSet()) { it.videoId } + com.opentune.data.library.LibraryStore.liked.value.map { it.videoId }
-        val known = records.mapTo(HashSet()) { com.opentune.data.history.Wrapped.mainArtist(it.artist) } + followed.map { it.name }
+        val (played, known) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val playedIds = records.mapTo(HashSet()) { it.videoId } +
+                com.opentune.data.library.LibraryStore.liked.value.map { it.videoId }
+            val artistNames = records.mapTo(HashSet()) { com.opentune.data.history.Wrapped.mainArtist(it.artist) } +
+                followed.map { it.name }
+            playedIds to artistNames
+        }
         com.opentune.data.reco.GenreDiscover.refresh(
             discoverSeeds, played, hidden,
             { a -> com.opentune.data.metadata.ArtistGenres.genreOf(a) }, known,
