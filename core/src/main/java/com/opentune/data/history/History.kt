@@ -124,8 +124,27 @@ object History {
             val latest = _records.value
             if (lastSaved === latest) return
             runCatching {
-                database?.replaceAll(latest)
-                    ?: error("History database not initialized")
+                val db = database ?: error("History database not initialized")
+                val previous = lastSaved
+                val isPrepend = previous != null && latest.isNotEmpty() &&
+                    latest.size == (previous.size + 1).coerceAtMost(MAX_RECORDS) &&
+                    latest.drop(1) == previous.take(MAX_RECORDS - 1)
+                if (isPrepend) {
+                    db.prepend(latest.first(), MAX_RECORDS)
+                } else if (previous != null && previous.size == latest.size) {
+                    var changed = -1
+                    var multiple = false
+                    for (i in latest.indices) {
+                        if (latest[i] != previous[i]) {
+                            if (changed >= 0) { multiple = true; break }
+                            changed = i
+                        }
+                    }
+                    if (!multiple && changed >= 0) db.updateAt(changed, latest[changed])
+                    else if (multiple) db.replaceAll(latest)
+                } else {
+                    db.replaceAll(latest)
+                }
                 lastSaved = latest
                 migrationPrefs?.edit()?.putBoolean("initialized", true)?.apply()
             }.onFailure { Log.w("History", "Couldn't persist listening history", it) }
