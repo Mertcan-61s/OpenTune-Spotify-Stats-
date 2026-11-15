@@ -255,7 +255,17 @@ fun LibraryScreen(contentPadding: PaddingValues, actions: SongActions, nav: Libr
     val yearStart = remember {
         Calendar.getInstance().apply { set(Calendar.DAY_OF_YEAR, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0) }.timeInMillis
     }
-    val summary = remember(records) { History.replay(records, yearStart) }
+    // Spotify imports can contain tens of thousands of listens. Never aggregate them
+    // during Compose composition: that blocks scrolling and navigation.
+    val summary by androidx.compose.runtime.produceState(
+        initialValue = History.replay(emptyList(), yearStart),
+        key1 = records,
+        key2 = yearStart,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            History.replay(records, yearStart)
+        }
+    }
     LaunchedEffect(signedIn, account?.email) {
         if (signedIn) runCatching { MusicRepository.libraryPlaylists() }
     }
