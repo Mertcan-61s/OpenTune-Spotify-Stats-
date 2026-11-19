@@ -34,7 +34,7 @@ trap 'rm -rf "$scratch"' EXIT
 name="OpenTune-Spotify-Stats-v$version-universal.apk"
 "$tools/zipalign" -P 16 -f 4 "$apk" "$scratch/aligned.apk"
 "$tools/apksigner" sign --ks "$keystore" --ks-key-alias opentune-stats \
-  --ks-pass "file:$password" --key-pass "file:$password" --v4-signing-enabled false \
+  --ks-pass "file:$password" --v4-signing-enabled false \
   --out "$scratch/$name" "$scratch/aligned.apk"
 signer=$("$tools/apksigner" verify --print-certs "$scratch/$name" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
 [[ "$signer" == "$expected_signer" ]] || { echo 'APK signature verification failed.' >&2; exit 1; }
