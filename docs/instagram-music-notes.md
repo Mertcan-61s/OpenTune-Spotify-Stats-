@@ -24,7 +24,15 @@ The **Spotify import Android APK** workflow runs the Notes, Spotify history and 
 
 For end-to-end verification on a phone, try rapid track changes, pause and resume, and repeat with Instagram uninstalled. To verify a playable Note, choose a catalog track and share it to a test audience in Instagram. Confirm playback from a second account that can see the Note. Compare cold launch time, frame timing and peak memory with the base build on the same device to measure any performance impact.
 
-## Update an existing installation
+## Stable Spotify Stats releases
+
+The stable Android package is `com.opentune.spotifystats`. Versions start at 1.1.2 (version code 49). Each release uses the permanent signing certificate pinned in `scripts/sign-stats-apk.sh`. Increase the app's version and version code before publishing a new release. The app's update checker reads stable releases from this fork.
+
+Use **Spotify import Android APK → stable-signed** with the repository's `STATS_RELEASE_KEYSTORE_BASE64` and `STATS_RELEASE_KEYSTORE_PASSWORD` Actions secrets. The signing script accepts only an optimized Stats APK and the pinned signing certificate. It emits the APK, its checksum and its release metadata. Attach those three files to the matching GitHub release.
+
+For signing outside GitHub, run the same workflow with `stable-candidate` to test and download the unsigned APK. On a trusted computer with JDK 21 and Android build-tools 36.0.0, set `OPENTUNE_STATS_KEYSTORE` and `OPENTUNE_STATS_PASSWORD_FILE` to the private recovery file paths, then run `bash scripts/sign-stats-apk.sh app-release-unsigned.apk signed-release`. Preserve the encrypted keystore and its password in separate private backups. The signing key is required for future Android updates.
+
+## Update a legacy installation
 
 Version 1.1.2 carries forward the Spotify history changes in 1.1.1. Android requires the same application ID and signing identity for an in-place update. The signed update workflow also requires a greater version code. The debug smoke-test artifact uses a temporary runner key.
 
