@@ -41,6 +41,18 @@ adb install -r -g "$after"
 [[ "$(first_install)" == "$initial" ]]
 printf 'Updated in place. First installation timestamp: %s\n' "$initial" | tee "$output/upgrade.txt"
 measure after
+
+# Compare fresh installs in reverse order, with matching empty data and network state.
+adb shell cmd connectivity airplane-mode enable
+for label in after_clean before_clean; do
+  adb uninstall "$pkg"
+  if [[ "$label" == after_clean ]]; then
+    adb install -g "$after"
+  else
+    adb install -g "$before"
+  fi
+  measure "$label"
+done
 python3 - "$output" <<'PY'
 import json
 from pathlib import Path
@@ -49,7 +61,7 @@ from statistics import median
 import sys
 root = Path(sys.argv[1])
 summary = {}
-for label in ["before", "after"]:
+for label in ["before", "after", "after_clean", "before_clean"]:
     series = {}
     fields = [
         ("cold_start_ms", "launch", r"com\.opentune\.spotifystats/[^,]+,\s*(\d+)\]"),
