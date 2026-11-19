@@ -3,6 +3,8 @@ name: Spotify import Android APK
 on:
   push:
     branches: [main, master]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -22,8 +24,18 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
       - uses: gradle/actions/setup-gradle@v4
-      - name: Test Spotify JSON parser
-        run: ./gradlew --no-daemon :core:testDebugUnitTest --tests '*SpotifyHistoryParserTest'
+      - name: Test Spotify history and settings persistence
+        run: >-
+          ./gradlew --no-daemon :core:testDebugUnitTest
+          --tests '*SpotifyHistoryParserTest'
+          --tests '*AccountHistoryMergeTest'
+          --tests '*SettingsDefaultsTest'
+      - name: Test Instagram Music Notes and settings placement
+        run: >-
+          ./gradlew --no-daemon :app:testDebugUnitTest
+          --tests '*MusicNoteTrackTest'
+          --tests '*InstagramNoteHandoffTest'
+          --tests '*SettingsLayoutTest'
       - name: Build installable Android APK
         run: ./gradlew --no-daemon :app:assembleDebug -PuniversalOnly=true
       - name: Upload Android APK
@@ -32,4 +44,14 @@ jobs:
           name: OpenTune-Spotify-Stats-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload Android test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-Android-unit-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest/*.xml
+            core/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: ignore
           retention-days: 14

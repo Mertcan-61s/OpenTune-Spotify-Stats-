@@ -53,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.automirrored.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Cast
@@ -224,6 +225,7 @@ class PlayerActions(
     val moveIndex: (Int, Int) -> Unit = { _, _ -> },
     val openTogether: () -> Unit = {},
     val openEqualizer: () -> Unit = {},
+    val openInstagramNote: (() -> Unit)? = null,
 )
 
 @Composable
@@ -261,7 +263,8 @@ fun PlayerScreen(
     val audioFormat by vm.audioFormat.collectAsState()
     val coverVideo by vm.coverVideo.collectAsState()
     val canvasVideo by vm.canvasVideo.collectAsState()
-    val actions = remember(vm, onCollapse) {
+    var showInstagramNote by remember(ui.instagramMusicNotes) { mutableStateOf(false) }
+    val actions = remember(vm, onCollapse, ui.instagramMusicNotes) {
         PlayerActions(
             togglePlay = vm::togglePlayPause,
             next = vm::skipNext,
@@ -275,6 +278,7 @@ fun PlayerScreen(
             moveIndex = vm::moveQueueItem,
             openTogether = onTogether,
             openEqualizer = onEqualizer,
+            openInstagramNote = if (ui.instagramMusicNotes) ({ showInstagramNote = true }) else null,
         )
     }
     PlayerLayout(
@@ -290,6 +294,9 @@ fun PlayerScreen(
         onCovering = onCovering,
         docked = docked,
     )
+    if (ui.instagramMusicNotes && showInstagramNote) {
+        com.opentune.integrations.instagram.InstagramNoteDialog(vm.player) { showInstagramNote = false }
+    }
 }
 
 /** A count that rises on each manual seek, for the lyrics clock to take a jump cleanly. */
@@ -1448,6 +1455,10 @@ fun PlayerLayout(
                 asPage = true,
                 top = { close ->
                     MenuRow(Icons.Rounded.HighQuality, "Upgrade quality") { close(); PlaybackRequests.upgradeQuality() }
+                    val openInstagramNote = actions.openInstagramNote
+                    if (openInstagramNote != null) {
+                        MenuRow(Icons.Rounded.MusicNote, "Instagram Music Notes") { close(); openInstagramNote() }
+                    }
                     // Always here: the Comments button setting only takes it out of the button pill.
                     MenuRow(Icons.Rounded.ChatBubbleOutline, "Comments") { close(); showComments = true }
                 },

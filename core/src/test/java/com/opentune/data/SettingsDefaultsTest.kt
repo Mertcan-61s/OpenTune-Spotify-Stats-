@@ -12,6 +12,13 @@ import org.junit.Test
 class SettingsDefaultsTest {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; coerceInputValues = true }
 
+    @Test fun instagramMusicNotesDefaultsOffAndExplicitOnSurvivesBackup() {
+        assertFalse(json.decodeFromString<SettingsState>("""{"ui":{"lyricsPreview":false}}""").ui.instagramMusicNotes)
+        val enabled = json.decodeFromString<SettingsState>("""{"ui":{"instagramMusicNotes":true}}""")
+        val restored = json.decodeFromString<SettingsState>(json.encodeToString(enabled))
+        assertTrue(restored.ui.instagramMusicNotes)
+    }
+
     @Test fun lyricsPreviewDefaultsOnAndExplicitOffSurvivesBackup() {
         assertTrue(json.decodeFromString<SettingsState>("{}").ui.lyricsPreview)
         val off = json.decodeFromString<SettingsState>("""{"ui":{"lyricsPreview":false}}""")

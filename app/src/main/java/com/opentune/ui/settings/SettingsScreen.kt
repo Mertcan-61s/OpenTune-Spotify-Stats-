@@ -890,6 +890,15 @@ private fun settingsSections(
                         chevron = false,
                     )
                 },
+                Entry("Instagram Music Notes", "instagram notes music share song now playing") {
+                    ToggleRow(
+                        "Instagram Music Notes",
+                        checked = ui.instagramMusicNotes,
+                        onChange = { enabled -> AppSettings.updateUi { it.copy(instagramMusicNotes = enabled) } },
+                        summary = "Adds a Now Playing action to copy the song and open Instagram for manual sharing.",
+                        icon = Icons.Rounded.MusicNote,
+                    )
+                },
                 Entry("Link a device", "tv television web browser computer cast speaker chromecast watch wear together qr pairing sign in with your phone platforms") {
                     NavRow("Link a device", onOpenDevices, summary = "Sign in your TV, the web player, speakers and more", leading = { ServiceMark(ServiceKind.Devices) })
                 },
