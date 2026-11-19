@@ -9,13 +9,15 @@ android {
     namespace = "com.opentune"
     // InnerTubeX's AAR is compiled against 37; targetSdk (runtime behaviour) stays 36.
     compileSdk = 37
+    // Current SDK tools install this platform under the explicit android-37.0 name.
+    compileSdkMinor = 0
 
     defaultConfig {
         applicationId = "com.opentune"
         minSdk = 26
         targetSdk = 36
-        versionCode = 47
-        versionName = "1.1.0"
+        versionCode = 49
+        versionName = "1.1.2"
         // This version's store changelog, shown as What's new when a release
         // goes out before the app's own notes for it are written.
         val changelog = rootProject.file("fastlane/metadata/android/en-US/changelogs/$versionCode.txt")
@@ -41,15 +43,23 @@ android {
     }
 
     val unsignedRelease = providers.gradleProperty("unsignedRelease").map { it.toBoolean() }.getOrElse(false)
+    // A separately installable preview protects the existing app and its data
+    // while a new signing key is being established.
+    val statsPreview = providers.gradleProperty("statsPreview").map { it.toBoolean() }.getOrElse(false)
+    val statsSuffix = if (statsPreview) ".spotifystats.preview" else ".spotifystats"
+    val statsName = if (statsPreview) "OpenTune Stats Preview" else "OpenTune Spotify Stats"
 
     buildTypes {
         debug {
             // Install alongside official OpenTune; never overwrite its data.
-            applicationIdSuffix = ".spotifystats"
+            applicationIdSuffix = statsSuffix
             versionNameSuffix = "-spotifystats"
-            resValue("string", "spotify_stats_app_name", "OpenTune Spotify Stats")
+            resValue("string", "app_name", statsName)
         }
         release {
+            applicationIdSuffix = statsSuffix
+            versionNameSuffix = "-spotifystats"
+            resValue("string", "app_name", statsName)
             // Shrinking only: nothing renamed or optimized (see proguard-rules.pro),
             // because stream resolution reaches NewPipe, Rhino, Ktor and others by
             // reflection. Unused library code and resources go.
@@ -144,6 +154,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-svg:3.0.4")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.test:core:1.7.0")
     testImplementation("io.coil-kt.coil3:coil-test:3.0.4")

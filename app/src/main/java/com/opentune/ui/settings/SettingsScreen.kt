@@ -538,6 +538,7 @@ private fun settingsSections(
         scope.launch {
             message = runCatching {
                 withContext(Dispatchers.IO) {
+                    History.awaitLoaded()
                     val doc = buildJsonObject {
                         put("app", "OpenTune")
                         put("version", 1)
@@ -559,7 +560,9 @@ private fun settingsSections(
                     context.contentResolver.openInputStream(uri)?.use { AppSettings.json.parseToJsonElement(it.readBytes().decodeToString()) }
                 } as? JsonObject ?: error("not an OpenTune export")
                 doc["settings"]?.let(AppSettings::importJson)
-                doc["history"]?.let(History::importJson)
+                doc["history"]?.let { history ->
+                    withContext(Dispatchers.Default) { History.importJson(history); History.awaitPersisted() }
+                }
                 doc["library"]?.let(LibraryStore::importJson)
                 "Imported settings, history, likes and playlists."
             }.getOrElse { com.opentune.i18n.Tr.f("Import failed: {0}", it.message) }
@@ -888,6 +891,15 @@ private fun settingsSections(
                             ServiceAction("Disconnect", danger = true) { com.opentune.ui.spotify.SpotifyConnection.disconnect() },
                         ),
                         chevron = false,
+                    )
+                },
+                Entry("Instagram Music Notes", "instagram notes music share song now playing") {
+                    ToggleRow(
+                        "Instagram Music Notes",
+                        checked = ui.instagramMusicNotes,
+                        onChange = { enabled -> AppSettings.updateUi { it.copy(instagramMusicNotes = enabled) } },
+                        summary = "Adds a Now Playing action to copy the song and open Instagram for manual sharing.",
+                        icon = Icons.Rounded.MusicNote,
                     )
                 },
                 Entry("Link a device", "tv television web browser computer cast speaker chromecast watch wear together qr pairing sign in with your phone platforms") {

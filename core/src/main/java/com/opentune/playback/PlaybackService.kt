@@ -200,7 +200,18 @@ class PlaybackService : MediaLibraryService() {
         val qualitySources = object : MediaSource.Factory by sources {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 val input = mediaItem.localConfiguration?.uri ?: return sources.createMediaSource(mediaItem)
-                if (videoIdOf(input) == null) return sources.createMediaSource(mediaItem)
+                val historyId = videoIdOf(input) ?: return sources.createMediaSource(mediaItem)
+                if (historyId.startsWith("spotify:")) {
+                    // Resolve one imported record when it is actually played,
+                    // not thousands of records while reading the archive.
+                    val song = mediaItem.toSong()
+                    val mapped = ResolvingDataSource.Factory(songSources.routing) { spec ->
+                        val match = runBlocking { com.opentune.data.history.ImportedHistoryTracks.resolve(song) }
+                            ?: throw java.io.IOException("Couldn't find this Spotify history song on YouTube Music")
+                        spec.withUri(trackUri(match.videoId))
+                    }
+                    return DefaultMediaSourceFactory(mapped).createMediaSource(mediaItem)
+                }
                 val addonKey = externalStreamKeyOf(input)
                 val addon = addonKey?.let { ExternalStreams.get(mediaItem.mediaId, it) }?.takeIf { it.addonId != null }
                 if (addon != null) {

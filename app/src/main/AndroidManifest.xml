@@ -36,11 +36,13 @@
     <!-- Installing an update downloaded from GitHub Releases; Android still asks each time. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- The phone's own equalizer, opened from the Equalizer page. -->
     <queries>
+        <!-- The phone's own equalizer, opened from the Equalizer page. -->
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
+        <!-- Open the official Instagram app from the Music Notes action. -->
+        <package android:name="com.instagram.android" />
     </queries>
 
     <!-- Nothing here is required hardware. Television has its own app (:tv). -->

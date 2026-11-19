@@ -9,6 +9,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateCheckTest {
+    @Test fun forkChecksItsOwnReleases() {
+        assertEquals("Mertcan-61s/OpenTune-Spotify-Stats-", UpdateCheck.repositoryForPackage("com.opentune.spotifystats"))
+        assertEquals("Mertcan-61s/OpenTune-Spotify-Stats-", UpdateCheck.repositoryForPackage("com.opentune.spotifystats.preview"))
+        assertEquals("justshivv/Opentune", UpdateCheck.repositoryForPackage("com.opentune"))
+    }
     @Test fun comparesNumberByNumber() {
         assertTrue(UpdateCheck.isNewer("1.10", "1.9"))
         assertTrue(UpdateCheck.isNewer("2.0.1", "2.0"))

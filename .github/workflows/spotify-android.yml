@@ -3,15 +3,37 @@ name: Spotify import Android APK
 on:
   push:
     branches: [main, master]
+  pull_request:
+    branches: [main, master]
   workflow_dispatch:
+    inputs:
+      previous_build:
+        description: Android tests, a stable release build, or an installed legacy APK to update
+        type: choice
+        default: test
+        options:
+          - test
+          - stable-candidate
+          - stable-signed
+          - publish-stable
+          - stats-1.1.0
+          - stats-1.1.1
+          - preview-1.1.1
+      release_assets_ref:
+        description: Ref containing an already signed APK and its verification files
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   android:
+    if: github.event_name != 'workflow_dispatch' || inputs.previous_build == 'test'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      JAVA_TOOL_OPTIONS: -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -22,14 +44,341 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
       - uses: gradle/actions/setup-gradle@v4
-      - name: Test Spotify JSON parser
-        run: ./gradlew --no-daemon :core:testDebugUnitTest --tests '*SpotifyHistoryParserTest'
-      - name: Build installable Android APK
+      - name: Test Spotify history, migration and settings persistence
+        run: >-
+          ./gradlew --no-daemon :core:testDebugUnitTest
+          --tests '*SpotifyHistoryParserTest'
+          --tests '*AccountHistoryMergeTest'
+          --tests '*HistoryDatabaseTest'
+          --tests '*WrappedTest'
+          --tests '*StatisticsIdentityTest'
+          --tests '*UpdateCheckTest'
+          --tests '*SettingsDefaultsTest'
+      - name: Test Instagram Music Notes, launcher and settings placement
+        run: >-
+          ./gradlew --no-daemon :app:testDebugUnitTest
+          --tests '*MusicNoteTrackTest'
+          --tests '*InstagramNoteHandoffTest'
+          --tests '*SettingsLayoutTest'
+          --tests '*AppIconTest'
+      - name: Build Android smoke-test APK
         run: ./gradlew --no-daemon :app:assembleDebug -PuniversalOnly=true
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: OpenTune-Spotify-Stats-debug-apk
+          name: OpenTune-Spotify-Stats-smoke-test-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Upload Android test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-Android-unit-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest/*.xml
+            core/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  emulator-smoke:
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenTune-Spotify-Stats-smoke-test-apk
+          path: android-apk
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch and restart with 100,000 listens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/check-android-history.sh
+      - name: Save emulator observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-history-emulator-observations
+          path: |
+            ${{ runner.temp }}/opentune-history-smoke/screen.png
+            ${{ runner.temp }}/opentune-history-smoke/gfxinfo.txt
+            ${{ runner.temp }}/opentune-history-smoke/logcat.txt
+          if-no-files-found: ignore
+
+  signed-update:
+    if: github.event_name == 'workflow_dispatch' && contains(fromJSON('["stats-1.1.0","stats-1.1.1","preview-1.1.1"]'), inputs.previous_build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check the original signing key
+        env:
+          PREVIOUS_BUILD: ${{ inputs.previous_build }}
+          KEYSTORE_BASE64: ${{ secrets.OPENTUNE_KEYSTORE_BASE64 }}
+          OPENTUNE_KEYSTORE_PASSWORD: ${{ secrets.OPENTUNE_KEYSTORE_PASSWORD }}
+          OPENTUNE_KEY_ALIAS: ${{ secrets.OPENTUNE_KEY_ALIAS }}
+          OPENTUNE_KEY_PASSWORD: ${{ secrets.OPENTUNE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          package=com.opentune.spotifystats
+          preview=false
+          case "$PREVIOUS_BUILD" in
+            stats-1.1.0)
+              previous_code=47
+              signer=773ca7ddabff34395442e86edb1e077a9bff75cc1d60674c12df97e76325f31a
+              ;;
+            stats-1.1.1|preview-1.1.1)
+              previous_code=48
+              signer=a97fed1c65a1b96208a2defd2a65d1178e2747ce4cf61d5f5b2a602ed29a363d
+              if [ "$PREVIOUS_BUILD" = preview-1.1.1 ]; then
+                package="$package.preview"
+                preview=true
+              fi
+              ;;
+            *) exit 1 ;;
+          esac
+          if [[ -z "$KEYSTORE_BASE64" || -z "$OPENTUNE_KEYSTORE_PASSWORD" || -z "$OPENTUNE_KEY_ALIAS" || -z "$OPENTUNE_KEY_PASSWORD" ]]; then
+            echo '::error::The original APK signing key and its credentials are required in the repository signing secrets.'
+            exit 1
+          fi
+          umask 077
+          keystore="$RUNNER_TEMP/stats-update.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          certificate=$(keytool -exportcert -keystore "$keystore" -alias "$OPENTUNE_KEY_ALIAS" -storepass:env OPENTUNE_KEYSTORE_PASSWORD | sha256sum | cut -d' ' -f1)
+          if [ "$certificate" != "$signer" ]; then
+            echo "::error::The configured key does not match the installed APK signer ($signer)."
+            exit 1
+          fi
+          {
+            printf 'OPENTUNE_KEYSTORE=%s\n' "$keystore"
+            printf 'UPDATE_PACKAGE=%s\n' "$package"
+            printf 'UPDATE_PREVIEW=%s\n' "$preview"
+            printf 'UPDATE_PREVIOUS_CODE=%s\n' "$previous_code"
+            printf 'UPDATE_SIGNER=%s\n' "$signer"
+          } >> "$GITHUB_ENV"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and verify the signed in-place update
+        env:
+          OPENTUNE_KEYSTORE_PASSWORD: ${{ secrets.OPENTUNE_KEYSTORE_PASSWORD }}
+          OPENTUNE_KEY_ALIAS: ${{ secrets.OPENTUNE_KEY_ALIAS }}
+          OPENTUNE_KEY_PASSWORD: ${{ secrets.OPENTUNE_KEY_PASSWORD }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+          DISCORD_APP_ID: ${{ vars.DISCORD_APP_ID || secrets.DISCORD_APP_ID }}
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:assembleRelease -PuniversalOnly=true -PstatsPreview="$UPDATE_PREVIEW"
+          apk=app/build/outputs/apk/release/app-release.apk
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          signer=$("$tools/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          manifest=$("$tools/aapt" dump badging "$apk" | sed -n '1p')
+          package=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$manifest")
+          version_code=$(sed -n "s/.* versionCode='\([0-9]*\)'.*/\1/p" <<< "$manifest")
+          if [[ "$signer" != "$UPDATE_SIGNER" || "$package" != "$UPDATE_PACKAGE" || -z "$version_code" || "$version_code" -le "$UPDATE_PREVIOUS_CODE" ]]; then
+            echo '::error::The APK must match the installed package and signer and have a higher version code.'
+            exit 1
+          fi
+          mkdir -p signed-update
+          cp "$apk" "signed-update/$package-update.apk"
+          (cd signed-update && sha256sum *.apk > SHA256SUMS.txt)
+      - name: Upload verified in-place update
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-signed-update-${{ inputs.previous_build }}
+          path: signed-update/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/stats-update.keystore"
+
+  stable-release:
+    if: github.event_name == 'workflow_dispatch' && (inputs.previous_build == 'stable-candidate' || inputs.previous_build == 'stable-signed')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Prepare the permanent release key
+        if: inputs.previous_build == 'stable-signed'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STATS_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.STATS_RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD" ]]; then
+            echo '::error::Configure the permanent Stats release key in GitHub Actions Secrets.'
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stats-release.p12"
+          printf '%s\n' "$KEYSTORE_PASSWORD" > "$RUNNER_TEMP/stats-release.password"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build optimized universal APK
+        env:
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET: ${{ secrets.LASTFM_API_SECRET }}
+          DISCORD_APP_ID: ${{ vars.DISCORD_APP_ID || secrets.DISCORD_APP_ID }}
+        run: ./gradlew --no-daemon :app:assembleRelease -PuniversalOnly=true -PunsignedRelease=true
+      - name: Sign and verify the permanent release identity
+        if: inputs.previous_build == 'stable-signed'
+        run: |
+          export OPENTUNE_STATS_KEYSTORE="$RUNNER_TEMP/stats-release.p12"
+          export OPENTUNE_STATS_PASSWORD_FILE="$RUNNER_TEMP/stats-release.password"
+          bash scripts/sign-stats-apk.sh app/build/outputs/apk/release/app-release-unsigned.apk signed-release
+      - name: Upload the unsigned release candidate
+        if: inputs.previous_build == 'stable-candidate'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-Stats-unsigned-release-candidate
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload the signed stable APK
+        if: inputs.previous_build == 'stable-signed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTune-Stats-stable-signed
+          path: signed-release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/stats-release.p12" "$RUNNER_TEMP/stats-release.password"
+
+  stable-emulator:
+    needs: stable-release
+    if: github.event_name == 'workflow_dispatch' && inputs.previous_build == 'stable-candidate'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools build-tools;36.0.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenTune-Stats-unsigned-release-candidate
+          path: candidate
+      - name: Prepare a disposable emulator APK
+        run: |
+          set -euo pipefail
+          keys="$RUNNER_TEMP/stats-emulator.p12"
+          keytool -genkeypair -storetype PKCS12 -keystore "$keys" -storepass android -alias smoke -keyalg RSA -validity 2 -dname 'CN=Disposable emulator key'
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign --ks "$keys" --ks-pass pass:android --out "$RUNNER_TEMP/stats-emulator.apk" candidate/app-release-unsigned.apk
+          rm -f "$keys"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install and launch the optimized APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            adb install -g "$RUNNER_TEMP/stats-emulator.apk"
+            adb logcat -c
+            adb shell am start -W com.opentune.spotifystats/com.opentune.MainActivity | tee "$RUNNER_TEMP/stats-first-start.txt"
+            grep -F 'Activity: com.opentune.spotifystats/com.opentune.MainActivity' "$RUNNER_TEMP/stats-first-start.txt"
+            sleep 8
+            adb shell pidof com.opentune.spotifystats || { adb logcat -d -v brief | tail -150; exit 1; }
+            adb shell am force-stop com.opentune.spotifystats
+            adb shell input keyevent KEYCODE_HOME
+            adb shell am start -W com.opentune.spotifystats/com.opentune.MainActivity | tee "$RUNNER_TEMP/stats-restart.txt"
+            grep -F 'Activity: com.opentune.spotifystats/com.opentune.MainActivity' "$RUNNER_TEMP/stats-restart.txt"
+            sleep 5
+            adb shell pidof com.opentune.spotifystats || { adb logcat -d -v brief | tail -150; exit 1; }
+            adb logcat -d -v brief > "$RUNNER_TEMP/stats-release-logcat.txt"
+            if grep -Eq 'ANR in com\.opentune\.spotifystats|AndroidRuntime.*Process: com\.opentune\.spotifystats,' "$RUNNER_TEMP/stats-release-logcat.txt"; then tail -150 "$RUNNER_TEMP/stats-release-logcat.txt"; exit 1; fi
+
+  publish-stable:
+    if: github.event_name == 'workflow_dispatch' && inputs.previous_build == 'publish-stable' && inputs.release_assets_ref != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_assets_ref }}
+          path: release-assets
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: build-tools;36.0.0
+      - name: Verify and publish the signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^        versionName = "\([0-9]*\.[0-9]*\.[0-9]*\)"$/\1/p' app/build.gradle.kts)
+          code=$(sed -n 's/^        versionCode = \([0-9]*\)$/\1/p' app/build.gradle.kts)
+          expected_signer=$(sed -n 's/^expected_signer=\([0-9a-f]\{64\}\)$/\1/p' scripts/sign-stats-apk.sh)
+          [[ -n "$version" && -n "$code" && -n "$expected_signer" ]]
+          tag="v$version"
+          name="OpenTune-Spotify-Stats-$tag-universal.apk"
+          package=com.opentune.spotifystats
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          cd release-assets
+          manifest=$("$tools/aapt" dump badging "$name")
+          grep -F "package: name='$package' versionCode='$code' versionName='$version-spotifystats'" <<< "$manifest"
+          if grep -q '^application-debuggable' <<< "$manifest"; then exit 1; fi
+          signer=$("$tools/apksigner" verify --print-certs "$name" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
+          [[ "$signer" == "$expected_signer" && "$(sha256sum "$name")" == "$(cat SHA256SUMS.txt)" ]]
+          jq -e --arg package "$package" --arg version "$version" --argjson code "$code" --arg signer "$signer" \
+            '.package == $package and .version == $version and .versionCode == $code and .signerSha256 == $signer' release-metadata.json
+          if draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
+            [[ "$draft" == true ]] || { echo 'The release tag is already published.' >&2; exit 1; }
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+              --title "OpenTune Spotify Stats $version" --notes-file release-notes.md
+          fi
+          for asset in "$name" SHA256SUMS.txt release-metadata.json; do
+            assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets)
+            if jq -e --arg name "$asset" 'any(.assets[]; .name == $name)' <<< "$assets" >/dev/null; then
+              existing=$(mktemp)
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --output "$existing" --clobber
+              cmp "$existing" "$asset"
+              rm -f "$existing"
+            else
+              gh release upload "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+            fi
+          done
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft=false --latest

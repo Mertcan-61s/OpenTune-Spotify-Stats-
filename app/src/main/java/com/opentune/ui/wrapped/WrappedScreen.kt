@@ -167,7 +167,19 @@ fun WrappedScreen(actions: SongActions, onBack: () -> Unit, nowMs: Long = System
             WrappedPeriod.ALL -> 0L
         }
     }
-    val summary = remember(records, since, nowMs) { Wrapped.summarize(records, since, nowMs) }
+    val summary = if (records.size <= 1_000) {
+        remember(records, since, nowMs) { Wrapped.summarize(records, since, nowMs) }
+    } else {
+        val calculated by androidx.compose.runtime.produceState(
+            initialValue = Wrapped.summarize(emptyList(), since, nowMs),
+            records, since, nowMs,
+        ) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                Wrapped.summarize(records, since, nowMs)
+            }
+        }
+        calculated
+    }
     val slides = remember(summary) {
         buildList {
             add(Slide.INTRO)

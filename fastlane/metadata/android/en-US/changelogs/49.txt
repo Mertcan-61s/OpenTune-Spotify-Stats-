@@ -1,0 +1,1 @@
+Added optional Instagram Music Notes handoff from Now Playing. Copy the current song and select the recording in Instagram to share a Note.

@@ -571,6 +571,8 @@ data class InterfaceSettings(
     val sidePlayer: Boolean = true,
     /** Your top songs play behind the Wrapped story; off is its mute button, kept for next time. */
     val wrappedMusic: Boolean = true,
+    /** Offer the Instagram Music Notes action in Now Playing. */
+    val instagramMusicNotes: Boolean = false,
 )
 
 /**

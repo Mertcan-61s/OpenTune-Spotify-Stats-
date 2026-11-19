@@ -217,7 +217,18 @@ private fun rememberPlaylistRows(nav: LibraryNav): List<LibraryPlaylistRow> {
     val spotifyConnected by com.opentune.ui.spotify.SpotifyConnection.connected.collectAsState()
     // One linked to a playlist here is listed once, as that one.
     val ytPlaylists = if (signedIn) remember(cachedPlaylists, playlists) { PlaylistLinks.unlinked(cachedPlaylists, playlists) } else emptyList()
-    val playCounts = remember(records) { records.groupingBy { it.videoId }.eachCount() }
+    val playCounts = if (records.size <= 1_000) {
+        remember(records) { records.groupingBy { it.videoId }.eachCount() }
+    } else {
+        val calculated by androidx.compose.runtime.produceState(
+            initialValue = emptyMap<String, Int>(), key1 = records,
+        ) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                records.groupingBy { it.videoId }.eachCount()
+            }
+        }
+        calculated
+    }
     val rows = mutableListOf<LibraryPlaylistRow>()
     for (p in playlists.filterNot { isYouTubeLikes(it.remoteId) || isYouTubeLikes(it.id) }) {
         val source = when {

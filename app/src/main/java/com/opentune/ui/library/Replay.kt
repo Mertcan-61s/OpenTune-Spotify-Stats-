@@ -86,8 +86,9 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
-/** Which stretch of listening Replay covers: this calendar week, month or year, or all of it. */
+/** Which stretch of listening Replay covers in the local calendar, or all of it. */
 internal enum class ReplayRange(val label: String, val word: String, val opening: String) {
+    DAY("Daily", "day", "Today"),
     WEEK("Weekly", "week", "This week"),
     MONTH("Monthly", "month", "This month"),
     YEAR("Yearly", "year", "This year"),
@@ -100,6 +101,7 @@ internal enum class ReplayRange(val label: String, val word: String, val opening
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }
         when (this) {
+            DAY -> Unit
             WEEK -> { c.firstDayOfWeek = Calendar.MONDAY; c.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY); if (c.timeInMillis > now) c.add(Calendar.DAY_OF_YEAR, -7) }
             MONTH -> c.set(Calendar.DAY_OF_MONTH, 1)
             else -> c.set(Calendar.DAY_OF_YEAR, 1)
@@ -111,6 +113,7 @@ internal enum class ReplayRange(val label: String, val word: String, val opening
     fun heading(now: Long = System.currentTimeMillis()): String {
         val c = Calendar.getInstance().apply { timeInMillis = now }
         return when (this) {
+            DAY -> "Today"
             WEEK -> "This week"
             MONTH -> "${c.getDisplayName(Calendar.MONTH, Calendar.LONG, java.util.Locale.getDefault())} ${c.get(Calendar.YEAR)}"
             YEAR -> "${c.get(Calendar.YEAR)}"
