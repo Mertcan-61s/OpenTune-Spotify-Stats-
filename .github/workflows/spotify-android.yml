@@ -15,9 +15,14 @@ on:
           - test
           - stable-candidate
           - stable-signed
+          - publish-stable
           - stats-1.1.0
           - stats-1.1.1
           - preview-1.1.1
+      release_assets_ref:
+        description: Ref containing an already signed APK and its verification files
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -315,3 +320,65 @@ jobs:
             adb shell pidof com.opentune.spotifystats || { adb logcat -d -v brief | tail -150; exit 1; }
             adb logcat -d -v brief > "$RUNNER_TEMP/stats-release-logcat.txt"
             if grep -Eq 'ANR in com\.opentune\.spotifystats|AndroidRuntime.*Process: com\.opentune\.spotifystats,' "$RUNNER_TEMP/stats-release-logcat.txt"; then tail -150 "$RUNNER_TEMP/stats-release-logcat.txt"; exit 1; fi
+
+  publish-stable:
+    if: github.event_name == 'workflow_dispatch' && inputs.previous_build == 'publish-stable' && inputs.release_assets_ref != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_assets_ref }}
+          path: release-assets
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: build-tools;36.0.0
+      - name: Verify and publish the signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^        versionName = "\([0-9]*\.[0-9]*\.[0-9]*\)"$/\1/p' app/build.gradle.kts)
+          code=$(sed -n 's/^        versionCode = \([0-9]*\)$/\1/p' app/build.gradle.kts)
+          expected_signer=$(sed -n 's/^expected_signer=\([0-9a-f]\{64\}\)$/\1/p' scripts/sign-stats-apk.sh)
+          [[ -n "$version" && -n "$code" && -n "$expected_signer" ]]
+          tag="v$version"
+          name="OpenTune-Spotify-Stats-$tag-universal.apk"
+          package=com.opentune.spotifystats
+          tools="$ANDROID_HOME/build-tools/36.0.0"
+          cd release-assets
+          manifest=$("$tools/aapt" dump badging "$name")
+          grep -F "package: name='$package' versionCode='$code' versionName='$version-spotifystats'" <<< "$manifest"
+          if grep -q '^application-debuggable' <<< "$manifest"; then exit 1; fi
+          signer=$("$tools/apksigner" verify --print-certs "$name" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p')
+          [[ "$signer" == "$expected_signer" && "$(sha256sum "$name")" == "$(cat SHA256SUMS.txt)" ]]
+          jq -e --arg package "$package" --arg version "$version" --argjson code "$code" --arg signer "$signer" \
+            '.package == $package and .version == $version and .versionCode == $code and .signerSha256 == $signer' release-metadata.json
+          if draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
+            [[ "$draft" == true ]] || { echo 'The release tag is already published.' >&2; exit 1; }
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft \
+              --title "OpenTune Spotify Stats $version" --notes-file release-notes.md
+          fi
+          for asset in "$name" SHA256SUMS.txt release-metadata.json; do
+            assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets)
+            if jq -e --arg name "$asset" 'any(.assets[]; .name == $name)' <<< "$assets" >/dev/null; then
+              existing=$(mktemp)
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --output "$existing" --clobber
+              cmp "$existing" "$asset"
+              rm -f "$existing"
+            else
+              gh release upload "$tag" "$asset" --repo "$GITHUB_REPOSITORY"
+            fi
+          done
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft=false --latest
