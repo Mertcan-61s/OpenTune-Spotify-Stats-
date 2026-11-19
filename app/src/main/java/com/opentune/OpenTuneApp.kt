@@ -1,6 +1,7 @@
 package com.opentune
 
 import android.app.Application
+import com.opentune.integrations.instagram.AutoMusicNotes
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -45,8 +46,14 @@ class OpenTuneApp : Application(), SingletonImageLoader.Factory {
         // First, so a crash anywhere after this is kept for Export diagnostics.
         com.opentune.data.CrashLog.install(this)
         // The home-screen widget follows the shared player service.
-        com.opentune.data.AppHooks.onPlayerChanged = { context, player -> com.opentune.widget.NowPlayingWidget.refresh(context, player) }
-        com.opentune.data.AppHooks.onPlayerStopped = { context -> com.opentune.widget.NowPlayingWidget.stopped(context) }
+        com.opentune.data.AppHooks.onPlayerChanged = { context, player ->
+            com.opentune.widget.NowPlayingWidget.refresh(context, player)
+            AutoMusicNotes.changed(context, player)
+        }
+        com.opentune.data.AppHooks.onPlayerStopped = { context ->
+            AutoMusicNotes.changed(context, null)
+            com.opentune.widget.NowPlayingWidget.stopped(context)
+        }
         java.util.Locale.setDefault(com.opentune.ui.theme.AppLanguages.wrap(this).resources.configuration.locales[0])
         // The words on every screen, in the chosen language (the phone's own when none is chosen).
         com.opentune.i18n.Tr.use(this, com.opentune.ui.theme.AppLanguages.selected(this).tag)

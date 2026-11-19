@@ -573,6 +573,7 @@ data class InterfaceSettings(
     val wrappedMusic: Boolean = true,
     /** Offer the Instagram Music Notes action in Now Playing. */
     val instagramMusicNotes: Boolean = false,
+    val autoInstagramNotes: Boolean = false,
 )
 
 /**
