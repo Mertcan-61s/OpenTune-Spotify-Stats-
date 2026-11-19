@@ -2,8 +2,50 @@
   <img src="docs/banner.jpg" alt="OpenTune: a free, open-source music player for Android, built on YouTube Music" width="100%">
 </p>
 
+# OpenTune Spotify Stats
+
+Bu Android sürümünde Spotify dinleme geçmişini OpenTune’a aktarabilir, Replay ve Wrapped ekranlarında istatistiklerine bakabilirsin. 1.1.3 ön sürümü, OpenTune’da çalan parçayı Instagram’da müzik notu olarak paylaşmayı deneyen bir seçenek de içerir.
+
+**1.1.2 yüklüyse** 1.1.3 APK’sını telefonda açıp **Güncelle**’ye dokun. İki sürüm aynı anahtarla imzalandı. Uygulamayı kaldırman veya verilerini silmen gerekmez. [1.1.3 deneysel APK’yı indir](https://github.com/Mertcan-61s/OpenTune-Spotify-Stats-/releases/download/v1.1.3-preview.1/OpenTune-Spotify-Stats-v1.1.3-universal.apk) · [1.1.2 kararlı sürüm](https://github.com/Mertcan-61s/OpenTune-Spotify-Stats-/releases/tag/v1.1.2)
+
+## Otomatik Instagram müzik notları
+
+**Bir defalık kurulum.** Özellik başlangıçta kapalıdır. Telefon, çalan şarkının adını ve sanatçısını kendi bilgisayarında çalışan kişisel not servisine gönderir. Servis, Instagram oturumunu o bilgisayarda tutar. Instagram’ın resmî olmayan API’sini kullandığı için hesap kısıtlaması veya ek giriş doğrulaması yaşanabilir. İlk deneme için bir test hesabı kullan.
+
+1. Linux veya macOS bilgisayarında Git ve Python 3.11 veya üstüyle aşağıdaki komutları çalıştır. `login` sırasında test hesabına kendi terminalinde giriş yap. Ekrana gelen **eşleştirme anahtarını** telefon için sakla. `serve` çalıştığı sürece terminali açık bırak.
+
+   ```sh
+   git clone --branch v1.1.3-preview.1 --depth 1 https://github.com/Mertcan-61s/OpenTune-Spotify-Stats-.git opentune-stats
+   cd opentune-stats/services/instagram-notes
+   python3 -m venv .venv
+   . .venv/bin/activate
+   python -m pip install -r requirements.txt
+   python bridge.py login
+   python bridge.py serve
+   ```
+
+2. **USB ile ilk deneme için** telefonda USB hata ayıklamayı aç, bilgisayara bağla ve bağlantı iznini onayla. Bilgisayarda Android Platform Tools kuruluysa ikinci bir terminalde `adb reverse tcp:8765 tcp:8765` çalıştır. Bu bağlantıda telefona gireceğin servis adresi `http://127.0.0.1:8765` olur. Kablosuz kullanım için servisi kendi HTTPS adresinden erişilebilir hâle getirebilirsin. [Servis ve bağlantı rehberi](https://github.com/Mertcan-61s/OpenTune-Spotify-Stats-/blob/v1.1.3-preview.1/services/instagram-notes/README.md)
+3. OpenTune’da **Ayarlar → Hesap ve entegrasyonlar → Bağlı hizmetler → Otomatik Instagram müzik notları** seçeneğini aç. Servis adresini ve eşleştirme anahtarını girip **Bağlan ve aç**’a dokun. Instagram şifreni telefondaki bu alana girmen gerekmez.
+4. **Bir şarkı çal ve en az 10 saniye dinle.** Başlık ve sanatçı katalogda tek bir ses kaydıyla eşleşirse servis parçayı **Yakın Arkadaşlar** kitlesine müzik notu olarak göndermeyi dener. Her parçada kopyalama veya Instagram’ı açma gerekmez. Hızlı geçişler atlanır ve otomatik güncellemeler arasında en az iki dakika bırakılır.
+
+**Not görünmezse** aynı ayarın altındaki durum mesajına bak. Servisin çalıştığını ve USB kullanıyorsan kablonun bağlı olduğunu kontrol et. Birden fazla kayıt eşleşirse paylaşım atlanır. Servis, Instagram’da gördüğü mevcut kişisel notunu da korur. Otomatik güncellemeleri durdurmak için aynı seçeneği kapat. Daha önce gönderilmiş not Instagram’da kalabilir.
+
+**Dinlenebilirlik henüz canlı hesaplarla doğrulanmadı.** Kendi denemende Yakın Arkadaşlar listendeki ikinci bir hesaptan Instagram gelen kutusunu aç, notuna dokun ve beklediğin parçanın çaldığını kontrol et. [Geliştirme ve test sonuçları](https://github.com/Mertcan-61s/OpenTune-Spotify-Stats-/pull/4)
+
+## Elle Instagram notu paylaşma
+
+Parçayı ve ses kesitini kendin seçmek istersen **Bağlı hizmetler → Instagram’da elle paylaş** seçeneğini aç. Şarkı çalarken **Şimdi Çalıyor → ⋯ → Instagram Müzik Notları → Kopyala ve Instagram’ı aç** yolunu izle. Instagram gelen kutusunda yeni bir not oluştur, **Müzik** simgesine dokun ve arama metnini yapıştır. Kaydı, kesiti ve hedef kitleyi seçip **Paylaş**’a dokun. Bu seçenek kişisel servis kurulumu gerektirmez.
+
+## Spotify geçmişini içe aktarma ve istatistikleri görme
+
+1. Spotify’dan aldığın dinleme geçmişi ZIP arşivini veya geçmişi içeren JSON dosyalarını telefonuna kaydet.
+2. OpenTune ayarlarında `Spotify history` diye ara. **Choose Spotify ZIP / JSON files** düğmesiyle dosyaları seç. Uygulama bulduğu dinleme sayısını gösterdiğinde **Import … listens** düğmesine dokun.
+3. **Ayarlar → Listening history → Replay** ekranından istatistiklerini, **Wrapped** ekranından yıl özetini aç. İçe aktarma telefonda yapılır. Spotify kayıtları OpenTune geçmişinle birleştirilir ve en yeni 100.000 dinleme saklanır.
+
+---
+
 <p align="center">
-  <a href="https://github.com/justshivv/Opentune/releases/latest"><b>Download the latest APK</b></a>
+  <a href="https://github.com/justshivv/Opentune/releases/latest"><b>Download upstream OpenTune</b></a>
   &nbsp;·&nbsp;
   <a href="https://justshivv.github.io/Opentune/">Website</a>
   &nbsp;·&nbsp;
