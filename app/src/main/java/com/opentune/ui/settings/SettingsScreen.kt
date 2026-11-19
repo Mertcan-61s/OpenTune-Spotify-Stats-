@@ -474,6 +474,7 @@ private fun settingsSections(
     var bitPerfectSheet by remember { mutableStateOf(false) }
     var lastFmDialog by remember { mutableStateOf(false) }
     var serverDialog by remember { mutableStateOf(false) }
+    var autoNotesDialog by remember { mutableStateOf(false) }
     var listenBrainzDialog by remember { mutableStateOf(false) }
     var sponsorBlockDialog by remember { mutableStateOf(false) }
     var update by remember { mutableStateOf<UpdateCheck.Release?>(null) }
@@ -582,6 +583,7 @@ private fun settingsSections(
     if (lyricsSourcesDialog) LyricsSourcesDialog(onDismiss = { lyricsSourcesDialog = false })
     if (lastFmDialog) LastFmDialog(onDismiss = { lastFmDialog = false })
     if (serverDialog) ServerDialog(onDismiss = { serverDialog = false })
+    if (autoNotesDialog) AutoNotesDialog(onDismiss = { autoNotesDialog = false })
     if (listenBrainzDialog) ListenBrainzDialog(onDismiss = { listenBrainzDialog = false })
     if (sponsorBlockDialog) SponsorBlockDialog(onDismiss = { sponsorBlockDialog = false })
     update?.let { UpdateDialog(it, onDismiss = { update = null }) }
@@ -894,8 +896,22 @@ private fun settingsSections(
                     )
                 },
                 Entry("Instagram Music Notes", "instagram notes music share song now playing") {
+                    val autoStatus by com.opentune.integrations.instagram.AutoMusicNotes.status.collectAsState()
                     ToggleRow(
-                        "Instagram Music Notes",
+                        "Automatic Instagram Music Notes",
+                        checked = ui.autoInstagramNotes,
+                        onChange = { enabled ->
+                            if (enabled) autoNotesDialog = true
+                            else {
+                                AppSettings.updateUi { it.copy(autoInstagramNotes = false) }
+                                com.opentune.integrations.instagram.AutoMusicNotes.settingChanged(context)
+                            }
+                        },
+                        summary = if (ui.autoInstagramNotes) autoStatus else "Experimental · Share the playing track to Close Friends through your own Notes bridge.",
+                        icon = Icons.Rounded.MusicNote,
+                    )
+                    ToggleRow(
+                        "Manual Instagram sharing",
                         checked = ui.instagramMusicNotes,
                         onChange = { enabled -> AppSettings.updateUi { it.copy(instagramMusicNotes = enabled) } },
                         summary = "Adds a Now Playing action to copy the song and open Instagram for manual sharing.",

@@ -1,0 +1,1 @@
+Experimental automatic Instagram Music Notes through your personal bridge. Exact title and artist matching, Close Friends sharing, and controlled background updates. Requires a configured bridge and an Instagram test account.
