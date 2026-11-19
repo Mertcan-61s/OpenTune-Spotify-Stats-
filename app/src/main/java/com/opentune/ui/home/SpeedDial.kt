@@ -224,7 +224,18 @@ fun SpeedDialScreen(contentPadding: PaddingValues, onItemClick: (ShelfItem) -> U
     // yet: then the picks made on the phone, rather than an empty page.
     val records by com.opentune.data.history.History.records.collectAsState()
     val plays by com.opentune.data.history.ListenedCollections.plays.collectAsState()
-    val local = remember(records, plays) { SpeedDial.fromHistory(records, collections = plays) }
+    val local = if (records.size <= 1_000) {
+        remember(records, plays) { SpeedDial.fromHistory(records, collections = plays) }
+    } else {
+        val calculated by androidx.compose.runtime.produceState(
+            initialValue = emptyList<ShelfItem>(), records, plays,
+        ) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                SpeedDial.fromHistory(records, collections = plays)
+            }
+        }
+        calculated
+    }
     val items = SpeedDial.personalized(local, SpeedDialItems.items)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = (maxWidth - 16.dp) / 4

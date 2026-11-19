@@ -67,7 +67,7 @@ object Wrapped {
             Entry(title, subtitle, list.first().thumbnailUrl, list.size, minutes(list), list.first().toSong())
         val ranked = compareByDescending<Pair<String, List<PlayRecord>>> { it.second.size }.thenByDescending { it.second.sumOf(::listenedMs) }
 
-        val bySong = window.groupBy { it.videoId }.toList().sortedWith(ranked)
+        val bySong = window.groupBy { it.statisticsSongKey() }.toList().sortedWith(ranked)
         val byArtist = window.groupBy { mainArtist(it.artist) }.filterKeys { it.isNotBlank() }.toList().sortedWith(ranked)
         val byAlbum = window.filter { !it.albumName.isNullOrBlank() }.groupBy { it.albumName!! }.toList().sortedWith(ranked)
 
@@ -101,18 +101,26 @@ object Wrapped {
         }
 
         val onRepeat = byDay.values
-            .flatMap { list -> list.groupBy { it.videoId }.values }
+            .flatMap { list -> list.groupBy { it.statisticsSongKey() }.values }
             .maxWithOrNull(compareBy<List<PlayRecord>> { it.size }.thenBy { -it.first().playedAt })
             ?.takeIf { it.size >= 2 }
 
-        val months = (11 downTo 0).map { back ->
+        val monthKeys = (11 downTo 0).map { back ->
             cal.timeInMillis = nowMs
             cal.add(Calendar.MONTH, -back)
             val year = cal.get(Calendar.YEAR)
             val month = cal.get(Calendar.MONTH)
             val name = cal.getDisplayName(Calendar.MONTH, Calendar.SHORT, java.util.Locale.getDefault()).orEmpty()
-            name to minutes(records.filter { r -> cal.timeInMillis = r.playedAt; cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month })
+            (year * 12 + month) to name
         }
+        val monthIndex = monthKeys.mapIndexed { index, (key, _) -> key to index }.toMap()
+        val monthTotals = LongArray(monthKeys.size)
+        for (record in records) {
+            cal.timeInMillis = record.playedAt
+            val key = cal.get(Calendar.YEAR) * 12 + cal.get(Calendar.MONTH)
+            monthIndex[key]?.let { monthTotals[it] += listenedMs(record) }
+        }
+        val months = monthKeys.mapIndexed { i, (_, name) -> name to TimeUnit.MILLISECONDS.toMinutes(monthTotals[i]) }
 
         return Summary(
             sinceMs = sinceMs,
@@ -121,7 +129,7 @@ object Wrapped {
             songs = bySong.size,
             artists = byArtist.size,
             topSongs = bySong.take(5).map { (_, list) -> entry(list, list.first().title, list.first().artist) },
-            topArtists = byArtist.take(5).map { (name, list) -> entry(list, name, com.opentune.i18n.Tr.f("{0} songs", list.distinctBy { it.videoId }.size)) },
+            topArtists = byArtist.take(5).map { (name, list) -> entry(list, name, com.opentune.i18n.Tr.f("{0} songs", list.distinctBy { it.statisticsSongKey() }.size)) },
             topAlbum = byAlbum.firstOrNull()?.let { (name, list) -> entry(list, name, mainArtist(list.first().artist)) },
             hours = hours.map { TimeUnit.MILLISECONDS.toMinutes(it) },
             peakHour = peak,
