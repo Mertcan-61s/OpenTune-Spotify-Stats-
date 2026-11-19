@@ -14,7 +14,7 @@ Unofficial endpoints can change without notice. Using them can trigger login cha
 
 The setting is off by default. While the sheet is open in the foreground, it observes the existing Media3 connection. Pauses, disconnections, and track changes clear the old suggestion. Rapid skips cancel the pending suggestion. The button rechecks the track against live playback before it copies anything. Opening the sheet is the only action that starts observing playback for this feature. There is no background work, polling, or Instagram network client in OpenTune.
 
-The **Spotify import Android APK** Actions workflow runs the Notes and Spotify regression tests and publishes the universal debug APK as `OpenTune-Spotify-Stats-debug-apk`. To run those checks locally with JDK 21 and the Android SDK configured, use these commands.
+The **Spotify import Android APK** Actions workflow runs the Notes and Spotify regression tests and publishes the universal debug APK as `OpenTune-Spotify-Stats-debug-apk`. To run those checks locally, configure JDK 21, Android SDK Platform 37.0 (`platforms;android-37.0`), build-tools 36.0.0, NDK 27.2.12479018 and CMake 3.22.1, then run these commands.
 
 ```sh
 ./gradlew :core:testDebugUnitTest --tests '*SpotifyHistoryParserTest' --tests '*AccountHistoryMergeTest' --tests '*SettingsDefaultsTest'

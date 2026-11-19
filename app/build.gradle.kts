@@ -9,6 +9,8 @@ android {
     namespace = "com.opentune"
     // InnerTubeX's AAR is compiled against 37; targetSdk (runtime behaviour) stays 36.
     compileSdk = 37
+    // Current SDK tools install this platform under the explicit android-37.0 name.
+    compileSdkMinor = 0
 
     defaultConfig {
         applicationId = "com.opentune"
