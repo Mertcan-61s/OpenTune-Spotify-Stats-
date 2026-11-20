@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 SCRIPT = (Path(__file__).resolve().parents[1] / "app/src/main/assets/instagram/notes-trial.js").read_text()
 INBOX = "https://www.instagram.com/direct/inbox/"
 NAV = '<nav><a aria-label="Profil" href="/test_side/">Profil</a></nav>'
-NOTE = '<div role="dialog" aria-label="Not paylaş"><div>Şarkı</div><div>Sanatçı</div>'
+NOTE = '<div role="dialog" aria-label="Not paylaş"><button>Müziği kaldır</button><div>Şarkı</div><div>Sanatçı</div>'
 MUSIC = '<div role="dialog" aria-label="Müzik">'
 CLOSE = '<button>Hedef kitle: Yakın Arkadaşlar</button>'
 SHARE = '<button id="submit" onclick="window.submitted++">Paylaş</button></div>'
@@ -58,6 +58,11 @@ class Trial(unittest.TestCase):
             self.assertEqual(self.page.evaluate("window.submitted"), 0)
         self.html(NOTE.replace("Şarkı", "Şarkı (Live)") + CLOSE + SHARE)
         self.assertEqual(self.step("submit"), "recording")
+
+    def test_text_without_audio_attachment_never_submits(self):
+        self.html(NOTE.replace("<button>Müziği kaldır</button>", "") + CLOSE + SHARE)
+        self.assertEqual(self.step("submit"), "recording")
+        self.assertEqual(self.page.evaluate("window.submitted"), 0)
 
     def test_account_origin_and_inbox_boundaries(self):
         self.html(NOTE + CLOSE + SHARE)

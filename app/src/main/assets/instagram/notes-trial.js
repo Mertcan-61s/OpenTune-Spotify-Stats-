@@ -59,7 +59,10 @@
         return click(button(dialog, ["done", "bitti", "tamam"]), "composer");
     if ((step === "composer" || step === "review" || step === "submit") && namedDialog(noteHeadings)) {
         // A recording shown within the composer after selecting from the music catalog.
-        if (!hasRecording(dialog)) return "recording";
+        const clip = all(dialog, "audio").length > 0 || buttons(dialog).some(el =>
+            ["play music", "play clip", "remove music", "edit music", "müziği çal",
+                "kesiti çal", "müziği kaldır", "müziği düzenle"].includes(label(el)));
+        if (!clip || !hasRecording(dialog)) return "recording";
         const selected = button(dialog, ["audience: close friends", "hedef kitle: yakın arkadaşlar",
             "share with: close friends", "sharing with close friends"]);
         const choice = button(dialog, ["close friends", "yakın arkadaşlar"]);
