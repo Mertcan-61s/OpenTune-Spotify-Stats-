@@ -896,6 +896,14 @@ private fun settingsSections(
                     )
                 },
                 Entry("Instagram Music Notes", "instagram notes music share song now playing") {
+                    if (android.os.Build.VERSION.SDK_INT >= 28) {
+                        NavRow("Phone-only Notes trial", {
+                            context.startActivity(android.content.Intent(context,
+                                com.opentune.integrations.instagram.PhoneNotesTrialActivity::class.java))
+                        }, summary = if (ui.autoInstagramNotes) "Turn off automatic bridge sharing before the phone trial."
+                        else "Try one music Note with a test account on this phone.",
+                            enabled = !ui.autoInstagramNotes, icon = Icons.Rounded.MusicNote)
+                    }
                     val autoStatus by com.opentune.integrations.instagram.AutoMusicNotes.status.collectAsState()
                     ToggleRow(
                         "Automatic Instagram Music Notes",
