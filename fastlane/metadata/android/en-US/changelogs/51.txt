@@ -1,0 +1,1 @@
+Phone-only experimental Music Notes trial using the Instagram website inside OpenTune. Requires Android 9 or newer. Live account availability and recipient playback remain unverified.

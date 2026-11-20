@@ -1,5 +1,9 @@
 # Instagram Music Notes on Android
 
+## Phone-only trial
+
+The 1.1.4 preview includes a foreground, single-submission trial using the Instagram website. See the [Turkish phone guide](instagram-phone-trial.md).
+
 ## Experimental automatic sharing
 
 The automatic setting uses OpenTune's background playback service and a personal Notes bridge. It attempts to publish matching audio to Close Friends after stable playback, even with the player screen closed. The bridge must remain reachable. A manual-sharing preference from an earlier APK never enables automatic publishing. See the [setup and verification guide](../services/instagram-notes/README.md).

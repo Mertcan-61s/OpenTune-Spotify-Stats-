@@ -2,6 +2,7 @@
 <!-- Android 12 and newer: keep the login cookie and Last.fm session out of cloud backups and device transfers. -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="root" path="app_webview_notes_trial" />
         <exclude domain="sharedpref" path="audio_addons.xml" />
         <exclude domain="sharedpref" path="usage_v2.xml" />
         <exclude domain="sharedpref" path="account.xml" />
@@ -10,6 +11,7 @@
         <exclude domain="sharedpref" path="listenbrainz.xml" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="root" path="app_webview_notes_trial" />
         <exclude domain="sharedpref" path="audio_addons.xml" />
         <exclude domain="sharedpref" path="usage_v2.xml" />
         <exclude domain="sharedpref" path="account.xml" />

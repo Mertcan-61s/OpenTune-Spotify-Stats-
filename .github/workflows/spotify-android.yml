@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, master]
   pull_request:
-    branches: [main, master, feature/instagram-notes-handoff]
+    branches: [main, master, feature/instagram-notes-handoff, feature/automatic-music-notes]
   workflow_dispatch:
     inputs:
       previous_build:
@@ -45,6 +45,10 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1
       - uses: gradle/actions/setup-gradle@v4
+      - name: Test phone trial against offline browser fixtures
+        run: |
+          python3 -m pip install playwright
+          CHROMIUM_BIN="$(command -v google-chrome)" python3 scripts/test-phone-notes-trial.py -v
       - name: Test experimental Notes bridge
         run: |
           python3 -m pip install -r services/instagram-notes/requirements.txt
@@ -68,7 +72,7 @@ jobs:
           --tests '*SettingsLayoutTest'
           --tests '*AppIconTest'
       - name: Build Android smoke-test APK
-        run: ./gradlew --no-daemon :app:assembleDebug -PuniversalOnly=true
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PuniversalOnly=true
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +80,12 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phone-notes-instrumentation
+          path: app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload Android test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -97,6 +107,10 @@ jobs:
         with:
           name: OpenTune-Spotify-Stats-smoke-test-apk
           path: android-apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: phone-notes-instrumentation
+          path: trial-test
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -110,7 +124,11 @@ jobs:
           target: google_apis
           disable-animations: false
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
-          script: bash scripts/check-android-history.sh
+          script: |
+            bash scripts/check-android-history.sh
+            adb install -r trial-test/*.apk
+            adb shell am instrument -w -e class com.opentune.integrations.instagram.PhoneTrialSmokeTest com.opentune.spotifystats.test/androidx.test.runner.AndroidJUnitRunner | tee "$RUNNER_TEMP/phone-notes-test.txt"
+            grep -F 'OK (1 test)' "$RUNNER_TEMP/phone-notes-test.txt"
       - name: Save emulator observations
         if: always()
         uses: actions/upload-artifact@v4

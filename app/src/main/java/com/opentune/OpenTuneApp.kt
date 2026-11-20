@@ -43,6 +43,10 @@ class OpenTuneApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        if (android.os.Build.VERSION.SDK_INT >= 28 && Application.getProcessName() == "$packageName:notes_trial") {
+            android.webkit.WebView.setDataDirectorySuffix("notes_trial")
+            return
+        }
         // First, so a crash anywhere after this is kept for Export diagnostics.
         com.opentune.data.CrashLog.install(this)
         // The home-screen widget follows the shared player service.
