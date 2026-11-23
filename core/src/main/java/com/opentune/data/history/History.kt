@@ -402,6 +402,28 @@ object History {
         )
     }
 
+    /** Called on the sync IO dispatcher; retrying a committed page never adds another play. */
+    suspend fun mergeDesktop(page: List<PlayRecord>) {
+        awaitLoaded()
+        while (true) {
+            val snapshot = _records.value
+            val keys = snapshot.mapTo(HashSet()) { it.videoId to it.playedAt }
+            val fresh = page.filter { keys.add(it.videoId to it.playedAt) }
+            if (fresh.isEmpty()) break
+            val change = Change.Add(fresh)
+            val combined = applyChange(snapshot, change)
+            val committed = synchronized(lock) {
+                if (_records.value !== snapshot) false else {
+                    _records.value = combined
+                    writes.trySend(change).getOrThrow()
+                    true
+                }
+            }
+            if (committed) break
+        }
+        awaitPersisted()
+    }
+
     fun exportJson(): JsonElement = json.encodeToJsonElement(serializer, _records.value)
 
     fun importJson(element: JsonElement) {
