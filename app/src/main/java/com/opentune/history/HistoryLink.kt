@@ -83,7 +83,7 @@ object HistoryLink {
             var cachedHost = ""
             while (true) {
                 val pin = prefs.getString("pin", "").orEmpty()
-                val wifi = network.getNetworkCapabilities(network.activeNetwork)
+                val wifi = network?.getNetworkCapabilities(network.activeNetwork)
                     ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
                 if (pin.isNotEmpty() && wifi) {
                     try {
