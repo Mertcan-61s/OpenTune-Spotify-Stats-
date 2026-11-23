@@ -67,6 +67,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install pyinstaller cryptography qrcodegen
+      - run: python tools/history-sync/test_companion.py
       - run: python -m PyInstaller --onefile --windowed --name OpenTune-History-Sync tools/history-sync/companion.py
       - uses: actions/upload-artifact@v4
         with:

@@ -1,5 +1,5 @@
 """OpenTune LAN history companion. Start OpenTune normally after the first pairing."""
-import base64
+from contextlib import closing
 import datetime
 import hashlib
 import hmac
@@ -58,7 +58,7 @@ def exchange(path, request):
         raise ValueError("invalid page")
     if not path.exists():
         raise RuntimeError("OpenTune must initialize its library first")
-    with sqlite3.connect(path, timeout=5) as db:
+    with closing(sqlite3.connect(path, timeout=5)) as db, db:
         db.execute("BEGIN IMMEDIATE")
         db.execute("CREATE INDEX IF NOT EXISTS sync_plays_date ON plays(id, at)")
         db.execute("CREATE TABLE IF NOT EXISTS sync_received(id TEXT, at INTEGER, PRIMARY KEY(id,at))")
